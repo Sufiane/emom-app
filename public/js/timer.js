@@ -140,6 +140,24 @@ function playWarningCue(ctx, time) {
   ringBurst(ctx, time + 0.42, 0.32);
 }
 
+// Short beep for each "get ready" count before the workout begins.
+function playCountBeep(ctx, time) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'triangle';
+  osc.frequency.value = 700;
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.exponentialRampToValueAtTime(0.7, time + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+
+  osc.connect(gain).connect(masterBus(ctx));
+  osc.start(time);
+  osc.stop(time + 0.22);
+}
+
+const COUNTDOWN_SECONDS = 3;
+
 // Clock "tic"/"toc" — a sharp noise click plus a short pitched body. The
 // high pitch is the "tic", the low pitch the "toc"; they alternate each
 // second during the warning window.
@@ -191,8 +209,14 @@ export class EmomTimer {
 
   start() {
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    this.startTime = this.ctx.currentTime + 0.15;
+
+    const now = this.ctx.currentTime;
+    this.startTime = now + COUNTDOWN_SECONDS + 0.15;
     this.finished = false;
+
+    for (let n = 0; n < COUNTDOWN_SECONDS; n++) {
+      playCountBeep(this.ctx, now + 0.15 + n);
+    }
 
     this.scheduleAll();
     this.loop();
@@ -227,6 +251,14 @@ export class EmomTimer {
     const tick = () => {
       const elapsed = this.ctx.currentTime - this.startTime;
       const total = this.workout.total_duration_sec;
+
+      // Pre-roll "get ready" countdown before the first interval.
+      if (elapsed < 0) {
+        this.onUpdate({ phase: 'countdown', count: Math.ceil(-elapsed) });
+        this.rafId = requestAnimationFrame(tick);
+
+        return;
+      }
 
       if (elapsed >= total) {
         this.onUpdate({ elapsed: total, remainingTotal: 0, currentInterval: this.intervals, remainingInterval: 0 });

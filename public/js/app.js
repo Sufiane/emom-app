@@ -256,6 +256,14 @@ function openRunner(workout) {
 }
 
 function onRunUpdate(state) {
+  if (state.phase === 'countdown') {
+    byId('run-time').textContent = String(state.count);
+    byId('run-rounds').textContent = 'Get ready';
+    byId('run-total').textContent = '';
+
+    return;
+  }
+
   byId('run-time').textContent = formatClock(state.remainingInterval);
   byId('run-rounds').textContent = `Round ${state.currentInterval} / ${timer.intervals}`;
   byId('run-total').textContent = `Total remaining ${formatClock(state.remainingTotal)}`;
