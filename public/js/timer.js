@@ -1,20 +1,88 @@
 // EMOM timer engine. All sounds are synthesized and scheduled on the
 // AudioContext clock so timing does not drift the way setTimeout would.
 
+// Shared output bus: a brick-wall-ish limiter so everything can be driven
+// loud and punchy without harsh clipping at the destination.
+const busNodes = new WeakMap();
+
+function masterBus(ctx) {
+  let bus = busNodes.get(ctx);
+
+  if (bus == null) {
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.18;
+
+    const makeup = ctx.createGain();
+    makeup.gain.value = 1.6;
+
+    limiter.connect(makeup).connect(ctx.destination);
+    bus = limiter;
+    busNodes.set(ctx, bus);
+  }
+
+  return bus;
+}
+
+const noiseBuffers = new WeakMap();
+
+function noiseBuffer(ctx) {
+  let buffer = noiseBuffers.get(ctx);
+
+  if (buffer == null) {
+    const length = Math.floor(ctx.sampleRate * 0.15);
+    buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < length; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    noiseBuffers.set(ctx, buffer);
+  }
+
+  return buffer;
+}
+
 // Boxing ring bell: bright metallic strike built from inharmonic partials
-// (bell-like ratios) with a fast attack and long ring-out.
+// (bell-like ratios) with a fast attack and long ring-out, plus a noisy
+// transient at the moment of impact for punch.
 const BELL_FUNDAMENTAL = 560;
 const BELL_PARTIALS = [
-  { ratio: 1.0, peak: 0.5, decay: 1.9 },
-  { ratio: 2.76, peak: 0.3, decay: 1.5 },
-  { ratio: 5.4, peak: 0.18, decay: 0.9 },
-  { ratio: 8.93, peak: 0.1, decay: 0.6 }
+  { ratio: 1.0, peak: 1.0, decay: 2.1 },
+  { ratio: 2.76, peak: 0.7, decay: 1.6 },
+  { ratio: 5.4, peak: 0.45, decay: 1.0 },
+  { ratio: 8.93, peak: 0.28, decay: 0.7 }
 ];
 
+function playStrike(ctx, time, destination) {
+  const source = ctx.createBufferSource();
+  source.buffer = noiseBuffer(ctx);
+
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 3200;
+  band.Q.value = 0.8;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.9, time);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
+
+  source.connect(band).connect(gain).connect(destination);
+  source.start(time);
+  source.stop(time + 0.05);
+}
+
 function playBell(ctx, time) {
+  const bus = masterBus(ctx);
   const master = ctx.createGain();
-  master.gain.value = 0.9;
-  master.connect(ctx.destination);
+  master.gain.value = 1.0;
+  master.connect(bus);
+
+  playStrike(ctx, time, master);
 
   for (const partial of BELL_PARTIALS) {
     const osc = ctx.createOscillator();
@@ -32,26 +100,6 @@ function playBell(ctx, time) {
   }
 }
 
-const noiseBuffers = new WeakMap();
-
-function noiseBuffer(ctx) {
-  let buffer = noiseBuffers.get(ctx);
-
-  if (buffer == null) {
-    const length = Math.floor(ctx.sampleRate * 0.1);
-    buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-
-    for (let i = 0; i < length; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-
-    noiseBuffers.set(ctx, buffer);
-  }
-
-  return buffer;
-}
-
 // Wooden clapper "clack" — a short filtered-noise burst, like the warning
 // clappers struck before the end of a boxing round.
 function playClack(ctx, time) {
@@ -60,14 +108,14 @@ function playClack(ctx, time) {
 
   const band = ctx.createBiquadFilter();
   band.type = 'bandpass';
-  band.frequency.value = 2100;
-  band.Q.value = 1.4;
+  band.frequency.value = 2000;
+  band.Q.value = 1.1;
 
   const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0.6, time);
-  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.055);
+  gain.gain.setValueAtTime(1.3, time);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.06);
 
-  source.connect(band).connect(gain).connect(ctx.destination);
+  source.connect(band).connect(gain).connect(masterBus(ctx));
   source.start(time);
   source.stop(time + 0.08);
 }
