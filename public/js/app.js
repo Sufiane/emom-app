@@ -235,7 +235,21 @@ function onRunFinish() {
   startBtn.textContent = 'Done';
   startBtn.dataset.state = 'done';
   byId('run-rounds').textContent = 'Finished';
+
+  if (!loggedIn) {
+    byId('signup-modal').classList.remove('hidden');
+  }
 }
+
+byId('modal-dismiss').addEventListener('click', () => {
+  byId('signup-modal').classList.add('hidden');
+});
+
+byId('modal-signup').addEventListener('click', () => {
+  byId('signup-modal').classList.add('hidden');
+  stopTimer();
+  showView('auth');
+});
 
 startBtn.addEventListener('click', () => {
   const state = startBtn.dataset.state;
