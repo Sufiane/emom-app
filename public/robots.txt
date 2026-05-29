@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://emom-app.su-souissi.workers.dev/sitemap.xml

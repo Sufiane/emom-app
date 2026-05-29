@@ -15,6 +15,7 @@ function applyChrome() {
   byId('logout-btn').classList.toggle('hidden', !loggedIn);
   byId('login-btn').classList.toggle('hidden', loggedIn);
   byId('guest-banner').classList.toggle('hidden', loggedIn);
+  byId('learn').classList.toggle('hidden', loggedIn);
 }
 
 function formatClock(totalSeconds) {

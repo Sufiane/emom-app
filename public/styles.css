@@ -198,6 +198,44 @@ li button {
   justify-content: center;
 }
 
+/* SEO / informational content */
+.seo {
+  max-width: 480px;
+  margin: 1.5rem auto 2.5rem;
+  padding: 0 1.25rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.seo h2 {
+  color: var(--text);
+  font-size: 1.3rem;
+}
+
+.seo h3 {
+  color: var(--text);
+  font-size: 1.05rem;
+  margin-top: 1.5rem;
+}
+
+.seo h4 {
+  color: var(--text);
+  font-size: 0.95rem;
+  margin: 1rem 0 0.25rem;
+}
+
+.seo ul,
+.seo ol {
+  padding-left: 1.2rem;
+}
+
+.seo li {
+  display: list-item;
+  background: none;
+  padding: 0.15rem 0;
+  margin: 0;
+}
+
 /* Sign-up modal */
 .modal-overlay {
   position: fixed;
