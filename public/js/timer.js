@@ -140,24 +140,38 @@ function playWarningCue(ctx, time) {
   ringBurst(ctx, time + 0.42, 0.32);
 }
 
-// Wooden clapper "clack" — a short filtered-noise burst, like the warning
-// clappers struck before the end of a boxing round.
-function playClack(ctx, time) {
+// Clock "tic"/"toc" — a sharp noise click plus a short pitched body. The
+// high pitch is the "tic", the low pitch the "toc"; they alternate each
+// second during the warning window.
+function playTickTock(ctx, time, high) {
+  const bus = masterBus(ctx);
+
   const source = ctx.createBufferSource();
   source.buffer = noiseBuffer(ctx);
 
-  const band = ctx.createBiquadFilter();
-  band.type = 'bandpass';
-  band.frequency.value = 2000;
-  band.Q.value = 1.1;
+  const highpass = ctx.createBiquadFilter();
+  highpass.type = 'highpass';
+  highpass.frequency.value = high ? 3500 : 2200;
 
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(1.3, time);
-  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.06);
+  const clickGain = ctx.createGain();
+  clickGain.gain.setValueAtTime(1.1, time);
+  clickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.02);
 
-  source.connect(band).connect(gain).connect(masterBus(ctx));
+  source.connect(highpass).connect(clickGain).connect(bus);
   source.start(time);
-  source.stop(time + 0.08);
+  source.stop(time + 0.04);
+
+  const osc = ctx.createOscillator();
+  const bodyGain = ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.value = high ? 1900 : 1250;
+  bodyGain.gain.setValueAtTime(0.0001, time);
+  bodyGain.gain.exponentialRampToValueAtTime(0.8, time + 0.003);
+  bodyGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
+
+  osc.connect(bodyGain).connect(bus);
+  osc.start(time);
+  osc.stop(time + 0.06);
 }
 
 export class EmomTimer {
@@ -197,7 +211,7 @@ export class EmomTimer {
       playWarningCue(this.ctx, boundary - lead);
 
       for (let second = lead; second >= 1; second--) {
-        playClack(this.ctx, boundary - second);
+        playTickTock(this.ctx, boundary - second, second % 2 === 0);
       }
 
       playBell(this.ctx, boundary);
