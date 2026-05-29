@@ -100,6 +100,24 @@ function playBell(ctx, time) {
   }
 }
 
+// Distinct cue at the moment the warning window opens: a quick rising
+// chirp so the start of the warning is unmistakable before the clacks.
+function playWarningCue(ctx, time) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(1200, time);
+  osc.frequency.exponentialRampToValueAtTime(2400, time + 0.16);
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.exponentialRampToValueAtTime(0.95, time + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.24);
+
+  osc.connect(gain).connect(masterBus(ctx));
+  osc.start(time);
+  osc.stop(time + 0.28);
+}
+
 // Wooden clapper "clack" — a short filtered-noise burst, like the warning
 // clappers struck before the end of a boxing round.
 function playClack(ctx, time) {
@@ -152,6 +170,9 @@ export class EmomTimer {
 
     for (let k = 1; k <= this.intervals; k++) {
       const boundary = this.startTime + k * interval;
+
+      // Distinct cue when the warning window opens, then clacks count down.
+      playWarningCue(this.ctx, boundary - lead);
 
       for (let second = lead; second >= 1; second--) {
         playClack(this.ctx, boundary - second);
