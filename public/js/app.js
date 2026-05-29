@@ -9,6 +9,8 @@ function showView(name) {
   for (const view of views) {
     byId(`view-${view}`).classList.toggle('hidden', view !== name);
   }
+
+  document.body.dataset.view = name;
 }
 
 function applyChrome() {

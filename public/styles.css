@@ -236,6 +236,49 @@ li button {
   margin: 0;
 }
 
+/* Landscape: turn the running timer into a full-screen display (phones) */
+@media (orientation: landscape) and (max-height: 600px) {
+  body[data-view="runner"] .topbar,
+  body[data-view="runner"] #guest-banner,
+  body[data-view="runner"] #learn {
+    display: none;
+  }
+
+  body[data-view="runner"] main {
+    max-width: none;
+    height: 100vh;
+    margin: 0;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  body[data-view="runner"] #view-runner {
+    width: 100%;
+  }
+
+  body[data-view="runner"] #run-name {
+    font-size: 1rem;
+    margin: 0;
+  }
+
+  body[data-view="runner"] .rounds {
+    font-size: 1rem;
+    margin: 0.1rem 0;
+  }
+
+  body[data-view="runner"] .big-time {
+    font-size: clamp(4rem, 45vh, 16rem);
+    margin: 0.2rem 0;
+  }
+
+  body[data-view="runner"] #run-total {
+    font-size: 0.85rem;
+    margin: 0.1rem 0;
+  }
+}
+
 /* Sign-up modal */
 .modal-overlay {
   position: fixed;
