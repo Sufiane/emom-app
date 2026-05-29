@@ -100,22 +100,44 @@ function playBell(ctx, time) {
   }
 }
 
-// Distinct cue at the moment the warning window opens: a quick rising
-// chirp so the start of the warning is unmistakable before the clacks.
+// A single bell "ring" — a metallic tone chopped by a fast tremolo to
+// give the trilling "brrring" of an old telephone / alarm bell.
+function ringBurst(ctx, time, duration) {
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, time);
+  env.gain.exponentialRampToValueAtTime(0.95, time + 0.01);
+  env.gain.setValueAtTime(0.95, time + duration - 0.04);
+  env.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+  env.connect(masterBus(ctx));
+
+  // Tremolo: a square LFO chops the tone on/off for the trill.
+  const tremolo = ctx.createGain();
+  tremolo.gain.value = 0.5;
+  tremolo.connect(env);
+
+  const lfo = ctx.createOscillator();
+  const lfoDepth = ctx.createGain();
+  lfo.type = 'square';
+  lfo.frequency.value = 28;
+  lfoDepth.gain.value = 0.5;
+  lfo.connect(lfoDepth).connect(tremolo.gain);
+  lfo.start(time);
+  lfo.stop(time + duration);
+
+  for (const freq of [1050, 1560]) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    osc.connect(tremolo);
+    osc.start(time);
+    osc.stop(time + duration);
+  }
+}
+
+// Distinct cue when the warning window opens: a "ring ring".
 function playWarningCue(ctx, time) {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(1200, time);
-  osc.frequency.exponentialRampToValueAtTime(2400, time + 0.16);
-  gain.gain.setValueAtTime(0.0001, time);
-  gain.gain.exponentialRampToValueAtTime(0.95, time + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.24);
-
-  osc.connect(gain).connect(masterBus(ctx));
-  osc.start(time);
-  osc.stop(time + 0.28);
+  ringBurst(ctx, time, 0.32);
+  ringBurst(ctx, time + 0.42, 0.32);
 }
 
 // Wooden clapper "clack" — a short filtered-noise burst, like the warning
