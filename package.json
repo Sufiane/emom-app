@@ -1,0 +1,25 @@
+{
+  "name": "emom-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "db:local": "wrangler d1 execute emom-app --local --file=src/db/schema.sql",
+    "db:remote": "wrangler d1 execute emom-app --remote --file=src/db/schema.sql"
+  },
+  "dependencies": {
+    "hono": "4.12.23"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260529.1",
+    "@typescript-eslint/eslint-plugin": "8.60.0",
+    "@typescript-eslint/parser": "8.60.0",
+    "eslint": "10.4.0",
+    "typescript": "6.0.3",
+    "wrangler": "4.95.0"
+  }
+}

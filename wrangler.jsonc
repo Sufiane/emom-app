@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "emom-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-29",
+  // Static PWA. Non-asset requests (e.g. /api/*) fall through to the Worker.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "emom-app",
+      "database_id": "REPLACE_AFTER_D1_CREATE"
+    }
+  ]
+}
