@@ -13,10 +13,15 @@
 <body>
   <header class="topbar">
     <h1>EMOM</h1>
+    <button id="login-btn" class="link-btn hidden">Log in</button>
     <button id="logout-btn" class="link-btn hidden">Log out</button>
   </header>
 
   <main>
+    <p id="guest-banner" class="banner hidden">
+      Guest mode — <button id="banner-login" class="link-btn inline">log in</button>
+      to save workouts and manage multiple.
+    </p>
     <!-- Auth -->
     <section id="view-auth" class="view hidden">
       <h2>Sign in</h2>
@@ -25,9 +30,10 @@
         <label>Password<input type="password" id="auth-password" autocomplete="current-password" minlength="8" required></label>
         <p id="auth-error" class="error" role="alert"></p>
         <div class="row">
-          <button type="submit" id="login-btn">Log in</button>
+          <button type="submit" id="auth-login-btn">Log in</button>
           <button type="button" id="register-btn" class="secondary">Create account</button>
         </div>
+        <p><button type="button" id="guest-link" class="link-btn">Continue without an account</button></p>
       </form>
     </section>
 
@@ -61,7 +67,7 @@
         <p class="muted">Total: <span id="w-total">10:00</span></p>
         <p id="form-error" class="error" role="alert"></p>
         <div class="row">
-          <button type="submit">Save</button>
+          <button type="submit" id="form-submit">Save</button>
           <button type="button" id="form-cancel" class="secondary">Cancel</button>
         </div>
       </form>

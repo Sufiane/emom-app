@@ -3,11 +3,18 @@ import { EmomTimer } from './timer.js';
 
 const byId = (id) => document.getElementById(id);
 const views = ['auth', 'list', 'form', 'runner'];
+let loggedIn = false;
 
 function showView(name) {
   for (const view of views) {
     byId(`view-${view}`).classList.toggle('hidden', view !== name);
   }
+}
+
+function applyChrome() {
+  byId('logout-btn').classList.toggle('hidden', !loggedIn);
+  byId('login-btn').classList.toggle('hidden', loggedIn);
+  byId('guest-banner').classList.toggle('hidden', loggedIn);
 }
 
 function formatClock(totalSeconds) {
@@ -50,9 +57,12 @@ byId('register-btn').addEventListener('click', () => {
 
 byId('logout-btn').addEventListener('click', async () => {
   await api.logout();
-  byId('logout-btn').classList.add('hidden');
-  showView('auth');
+  showGuestHome();
 });
+
+byId('login-btn').addEventListener('click', () => showView('auth'));
+byId('banner-login').addEventListener('click', () => showView('auth'));
+byId('guest-link').addEventListener('click', () => showGuestHome());
 
 // ---- Workout list ----
 
@@ -144,9 +154,14 @@ for (const input of [intervalInput, roundsInput, leadInput]) {
 function openForm(workout) {
   editingId = workout ? workout.id : null;
   formError.textContent = '';
-  byId('form-title').textContent = workout ? 'Edit workout' : 'New workout';
+  byId('form-title').textContent = loggedIn ? (workout ? 'Edit workout' : 'New workout') : 'Quick workout';
+  byId('form-submit').textContent = loggedIn ? 'Save' : 'Start';
+  byId('form-cancel').classList.toggle('hidden', !loggedIn);
 
-  byId('w-name').value = workout ? workout.name : '';
+  const nameInput = byId('w-name');
+  nameInput.required = loggedIn;
+  nameInput.placeholder = loggedIn ? '' : 'Workout';
+  nameInput.value = workout ? workout.name : '';
   intervalInput.value = String(workout ? workout.interval_sec : 60);
   roundsInput.value = String(workout ? workout.total_duration_sec / workout.interval_sec : 10);
   leadInput.value = String(workout ? workout.warning_lead_sec : 10);
@@ -166,6 +181,16 @@ workoutForm.addEventListener('submit', async (event) => {
     warning_lead_sec: Number(leadInput.value),
     total_duration_sec: interval * Number(roundsInput.value)
   };
+
+  if (!loggedIn) {
+    if (payload.name.length === 0) {
+      payload.name = 'Workout';
+    }
+
+    openRunner(payload);
+
+    return;
+  }
 
   try {
     if (editingId) {
@@ -239,7 +264,12 @@ byId('run-reset').addEventListener('click', () => {
 
 byId('run-back').addEventListener('click', () => {
   stopTimer();
-  showView('list');
+
+  if (loggedIn) {
+    showView('list');
+  } else {
+    showView('form');
+  }
 });
 
 function stopTimer() {
@@ -252,9 +282,16 @@ function stopTimer() {
 // ---- Bootstrap ----
 
 async function enterApp() {
-  byId('logout-btn').classList.remove('hidden');
+  loggedIn = true;
+  applyChrome();
   await renderList();
   showView('list');
+}
+
+function showGuestHome() {
+  loggedIn = false;
+  applyChrome();
+  openForm(null);
 }
 
 async function boot() {
@@ -262,7 +299,7 @@ async function boot() {
     await api.me();
     await enterApp();
   } catch {
-    showView('auth');
+    showGuestHome();
   }
 
   if ('serviceWorker' in navigator) {
