@@ -216,6 +216,33 @@ byId('form-cancel').addEventListener('click', () => showView('list'));
 let timer = null;
 const startBtn = byId('run-start');
 
+let wakeLock = null;
+
+async function acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch {
+    wakeLock = null;
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock != null) {
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
+}
+
+// The lock drops when the tab is hidden; re-acquire it when a running
+// workout becomes visible again.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && timer != null && !timer.paused && !timer.finished) {
+    acquireWakeLock();
+  }
+});
+
 function openRunner(workout) {
   stopTimer();
   byId('run-name').textContent = workout.name;
@@ -235,6 +262,7 @@ function onRunUpdate(state) {
 }
 
 function onRunFinish() {
+  releaseWakeLock();
   startBtn.textContent = 'Done';
   startBtn.dataset.state = 'done';
   byId('run-rounds').textContent = 'Finished';
@@ -261,14 +289,17 @@ startBtn.addEventListener('click', () => {
     const workout = JSON.parse(startBtn.dataset.workout);
     timer = new EmomTimer(workout, onRunUpdate, onRunFinish);
     timer.start();
+    acquireWakeLock();
     startBtn.textContent = 'Pause';
     startBtn.dataset.state = 'running';
   } else if (state === 'running') {
     timer.pause();
+    releaseWakeLock();
     startBtn.textContent = 'Resume';
     startBtn.dataset.state = 'paused';
   } else if (state === 'paused') {
     timer.resume();
+    acquireWakeLock();
     startBtn.textContent = 'Pause';
     startBtn.dataset.state = 'running';
   }
@@ -290,6 +321,8 @@ byId('run-back').addEventListener('click', () => {
 });
 
 function stopTimer() {
+  releaseWakeLock();
+
   if (timer != null) {
     timer.stop();
     timer = null;
