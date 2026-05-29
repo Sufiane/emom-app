@@ -1,28 +1,75 @@
-// EMOM timer engine. All sounds are scheduled on the AudioContext clock so
-// timing does not drift the way setTimeout would.
+// EMOM timer engine. All sounds are synthesized and scheduled on the
+// AudioContext clock so timing does not drift the way setTimeout would.
 
-function scheduleTone(ctx, startTime, { freq, duration, peak, type }) {
-  const osc = ctx.createOscillator();
+// Boxing ring bell: bright metallic strike built from inharmonic partials
+// (bell-like ratios) with a fast attack and long ring-out.
+const BELL_FUNDAMENTAL = 560;
+const BELL_PARTIALS = [
+  { ratio: 1.0, peak: 0.5, decay: 1.9 },
+  { ratio: 2.76, peak: 0.3, decay: 1.5 },
+  { ratio: 5.4, peak: 0.18, decay: 0.9 },
+  { ratio: 8.93, peak: 0.1, decay: 0.6 }
+];
+
+function playBell(ctx, time) {
+  const master = ctx.createGain();
+  master.gain.value = 0.9;
+  master.connect(ctx.destination);
+
+  for (const partial of BELL_PARTIALS) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.value = BELL_FUNDAMENTAL * partial.ratio;
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.exponentialRampToValueAtTime(partial.peak, time + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + partial.decay);
+
+    osc.connect(gain).connect(master);
+    osc.start(time);
+    osc.stop(time + partial.decay + 0.1);
+  }
+}
+
+const noiseBuffers = new WeakMap();
+
+function noiseBuffer(ctx) {
+  let buffer = noiseBuffers.get(ctx);
+
+  if (buffer == null) {
+    const length = Math.floor(ctx.sampleRate * 0.1);
+    buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < length; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    noiseBuffers.set(ctx, buffer);
+  }
+
+  return buffer;
+}
+
+// Wooden clapper "clack" — a short filtered-noise burst, like the warning
+// clappers struck before the end of a boxing round.
+function playClack(ctx, time) {
+  const source = ctx.createBufferSource();
+  source.buffer = noiseBuffer(ctx);
+
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 2100;
+  band.Q.value = 1.4;
+
   const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.6, time);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.055);
 
-  osc.type = type;
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0.0001, startTime);
-  gain.gain.exponentialRampToValueAtTime(peak, startTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-
-  osc.connect(gain).connect(ctx.destination);
-  osc.start(startTime);
-  osc.stop(startTime + duration + 0.05);
-}
-
-function scheduleTick(ctx, time) {
-  scheduleTone(ctx, time, { freq: 880, duration: 0.07, peak: 0.25, type: 'square' });
-}
-
-function scheduleGong(ctx, time) {
-  scheduleTone(ctx, time, { freq: 180, duration: 1.4, peak: 0.5, type: 'sine' });
-  scheduleTone(ctx, time, { freq: 360, duration: 1.0, peak: 0.2, type: 'sine' });
+  source.connect(band).connect(gain).connect(ctx.destination);
+  source.start(time);
+  source.stop(time + 0.08);
 }
 
 export class EmomTimer {
@@ -52,17 +99,22 @@ export class EmomTimer {
   scheduleAll() {
     const { interval_sec: interval, warning_lead_sec: lead } = this.workout;
 
-    // Gong at the start of interval 1.
-    scheduleGong(this.ctx, this.startTime);
+    // Bell at the start of interval 1.
+    playBell(this.ctx, this.startTime);
 
     for (let k = 1; k <= this.intervals; k++) {
       const boundary = this.startTime + k * interval;
 
       for (let second = lead; second >= 1; second--) {
-        scheduleTick(this.ctx, boundary - second);
+        playClack(this.ctx, boundary - second);
       }
 
-      scheduleGong(this.ctx, boundary);
+      playBell(this.ctx, boundary);
+
+      // Final boundary gets a second strike — a boxing "ding-ding" finish.
+      if (k === this.intervals) {
+        playBell(this.ctx, boundary + 0.34);
+      }
     }
   }
 
