@@ -64,20 +64,40 @@
     <!-- Create / edit form -->
     <section id="view-form" class="view hidden">
       <h2 id="form-title">New workout</h2>
+
+      <div class="type-picker" role="tablist" aria-label="Workout type">
+        <button type="button" class="type-opt" data-type="emom" aria-selected="true">EMOM</button>
+        <button type="button" class="type-opt" data-type="intervals">Intervals</button>
+      </div>
+
       <form id="workout-form">
         <label>Name<input type="text" id="w-name" required></label>
-        <label>Interval length
-          <select id="w-interval">
-            <option value="30">30 seconds</option>
-            <option value="60" selected>1 minute</option>
-            <option value="90">90 seconds</option>
-            <option value="120">2 minutes</option>
-          </select>
-        </label>
+
+        <div class="type-fields" data-for="emom">
+          <label>Interval length
+            <select id="w-interval">
+              <option value="30">30 seconds</option>
+              <option value="60" selected>1 minute</option>
+              <option value="90">90 seconds</option>
+              <option value="120">2 minutes</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="type-fields hidden" data-for="intervals">
+          <div class="presets">
+            <button type="button" class="secondary" data-preset="tabata">Tabata 20/10 ×8</button>
+            <button type="button" class="secondary" data-preset="hiit">HIIT 30/15 ×10</button>
+          </div>
+          <label>Work seconds<input type="number" id="w-work" min="5" max="600" value="40"></label>
+          <label>Rest seconds<input type="number" id="w-rest" min="1" max="600" value="20"></label>
+        </div>
+
         <label>Rounds<input type="number" id="w-rounds" min="1" max="120" value="10" required></label>
         <label>Warning lead: <span id="w-lead-out">10</span>s
-          <input type="range" id="w-lead" min="5" max="15" value="10">
+          <input type="range" id="w-lead" min="3" max="15" value="10">
         </label>
+
         <p class="muted">Total: <span id="w-total">10:00</span></p>
         <p id="form-error" class="error" role="alert"></p>
         <div class="row">

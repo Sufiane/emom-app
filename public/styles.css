@@ -175,6 +175,44 @@ li button {
   font-size: 0.85rem;
 }
 
+/* Workout-type picker (segmented) */
+.type-picker {
+  display: flex;
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid #334155;
+  border-radius: var(--radius);
+  padding: 4px;
+  margin-bottom: 1rem;
+}
+
+.type-opt {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.type-opt[aria-selected="true"] {
+  background: var(--accent);
+  color: #0b1120;
+}
+
+.presets {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.presets button {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.7rem;
+}
+
 /* Runner */
 #view-runner {
   text-align: center;

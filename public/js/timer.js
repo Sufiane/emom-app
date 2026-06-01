@@ -158,6 +158,29 @@ function playCountBeep(ctx, time) {
 
 const COUNTDOWN_SECONDS = 3;
 
+// Mellow descending two-tone marking the start of a rest phase — clearly
+// softer and lower than the bright work bell.
+function playRestCue(ctx, time) {
+  const bus = masterBus(ctx);
+  const notes = [{ freq: 440, offset: 0 }, { freq: 300, offset: 0.16 }];
+
+  for (const note of notes) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const at = time + note.offset;
+
+    osc.type = 'sine';
+    osc.frequency.value = note.freq;
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.7, at + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
+
+    osc.connect(gain).connect(bus);
+    osc.start(at);
+    osc.stop(at + 0.22);
+  }
+}
+
 // Clock "tic"/"toc" — a sharp noise click plus a short pitched body. The
 // high pitch is the "tic", the low pitch the "toc"; they alternate each
 // second during the warning window.
@@ -192,7 +215,7 @@ function playTickTock(ctx, time, high) {
   osc.stop(time + 0.06);
 }
 
-export class EmomTimer {
+export class WorkoutTimer {
   constructor(workout, onUpdate, onFinish) {
     this.workout = workout;
     this.onUpdate = onUpdate;
@@ -201,10 +224,31 @@ export class EmomTimer {
     this.startTime = 0;
     this.rafId = 0;
     this.finished = false;
+    this.segments = [];
   }
 
-  get intervals() {
-    return this.workout.total_duration_sec / this.workout.interval_sec;
+  get totalDuration() {
+    const { rounds, work_sec, rest_sec } = this.workout;
+
+    return rounds * (work_sec + rest_sec);
+  }
+
+  buildSegments() {
+    const { rounds, work_sec, rest_sec } = this.workout;
+    const segments = [];
+    let cursor = this.startTime;
+
+    for (let round = 1; round <= rounds; round++) {
+      segments.push({ kind: 'work', round, start: cursor, end: cursor + work_sec });
+      cursor += work_sec;
+
+      if (rest_sec > 0) {
+        segments.push({ kind: 'rest', round, start: cursor, end: cursor + rest_sec });
+        cursor += rest_sec;
+      }
+    }
+
+    return segments;
   }
 
   start() {
@@ -213,6 +257,7 @@ export class EmomTimer {
     const now = this.ctx.currentTime;
     this.startTime = now + COUNTDOWN_SECONDS + 0.15;
     this.finished = false;
+    this.segments = this.buildSegments();
 
     for (let n = 0; n < COUNTDOWN_SECONDS; n++) {
       playCountBeep(this.ctx, now + 0.15 + n);
@@ -223,26 +268,32 @@ export class EmomTimer {
   }
 
   scheduleAll() {
-    const { interval_sec: interval, warning_lead_sec: lead } = this.workout;
+    const lead = this.workout.warning_lead_sec;
+    const segments = this.segments;
 
-    // Bell at the start of interval 1.
+    // Bell at the very first work-phase start.
     playBell(this.ctx, this.startTime);
 
-    for (let k = 1; k <= this.intervals; k++) {
-      const boundary = this.startTime + k * interval;
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
 
-      // Distinct cue when the warning window opens, then clacks count down.
-      playWarningCue(this.ctx, boundary - lead);
+      // Warning window before this phase ends.
+      playWarningCue(this.ctx, seg.end - lead);
 
       for (let second = lead; second >= 1; second--) {
-        playTickTock(this.ctx, boundary - second, second % 2 === 0);
+        playTickTock(this.ctx, seg.end - second, second % 2 === 0);
       }
 
-      playBell(this.ctx, boundary);
+      const next = segments[i + 1];
 
-      // Final boundary gets a second strike — a boxing "ding-ding" finish.
-      if (k === this.intervals) {
-        playBell(this.ctx, boundary + 0.34);
+      if (next == null) {
+        // Final boundary — boxing "ding-ding" finish.
+        playBell(this.ctx, seg.end);
+        playBell(this.ctx, seg.end + 0.34);
+      } else if (next.kind === 'work') {
+        playBell(this.ctx, seg.end);
+      } else {
+        playRestCue(this.ctx, seg.end);
       }
     }
   }
@@ -250,9 +301,9 @@ export class EmomTimer {
   loop() {
     const tick = () => {
       const elapsed = this.ctx.currentTime - this.startTime;
-      const total = this.workout.total_duration_sec;
+      const total = this.totalDuration;
 
-      // Pre-roll "get ready" countdown before the first interval.
+      // Pre-roll "get ready" countdown before the first phase.
       if (elapsed < 0) {
         this.onUpdate({ phase: 'countdown', count: Math.ceil(-elapsed) });
         this.rafId = requestAnimationFrame(tick);
@@ -261,21 +312,36 @@ export class EmomTimer {
       }
 
       if (elapsed >= total) {
-        this.onUpdate({ elapsed: total, remainingTotal: 0, currentInterval: this.intervals, remainingInterval: 0 });
+        const last = this.segments[this.segments.length - 1];
+
+        this.onUpdate({
+          phase: last.kind,
+          round: last.round,
+          totalRounds: this.workout.rounds,
+          remainingPhase: 0,
+          remainingTotal: 0
+        });
         this.finish();
 
         return;
       }
 
-      const clamped = Math.max(0, elapsed);
-      const currentInterval = Math.floor(clamped / this.workout.interval_sec) + 1;
-      const remainingInterval = this.workout.interval_sec - (clamped % this.workout.interval_sec);
+      const nowTime = this.ctx.currentTime;
+      let current = this.segments[this.segments.length - 1];
+
+      for (const seg of this.segments) {
+        if (nowTime < seg.end) {
+          current = seg;
+          break;
+        }
+      }
 
       this.onUpdate({
-        elapsed: clamped,
-        remainingTotal: total - clamped,
-        currentInterval: Math.min(currentInterval, this.intervals),
-        remainingInterval
+        phase: current.kind,
+        round: current.round,
+        totalRounds: this.workout.rounds,
+        remainingPhase: current.end - nowTime,
+        remainingTotal: total - elapsed
       });
 
       this.rafId = requestAnimationFrame(tick);

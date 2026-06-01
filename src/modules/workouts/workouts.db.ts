@@ -1,9 +1,13 @@
+export type WorkoutType = 'emom' | 'intervals';
+
 export type WorkoutRow = {
   id: string;
   user_id: string;
   name: string;
-  total_duration_sec: number;
-  interval_sec: number;
+  type: WorkoutType;
+  rounds: number;
+  work_sec: number;
+  rest_sec: number;
   warning_lead_sec: number;
   created_at: number;
   updated_at: number;
@@ -31,14 +35,16 @@ export class WorkoutsDb {
   async insert(row: WorkoutRow): Promise<void> {
     await this.db
       .prepare(
-        'INSERT INTO workouts (id, user_id, name, total_duration_sec, interval_sec, warning_lead_sec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO workouts (id, user_id, name, type, rounds, work_sec, rest_sec, warning_lead_sec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
       .bind(
         row.id,
         row.user_id,
         row.name,
-        row.total_duration_sec,
-        row.interval_sec,
+        row.type,
+        row.rounds,
+        row.work_sec,
+        row.rest_sec,
         row.warning_lead_sec,
         row.created_at,
         row.updated_at
@@ -49,12 +55,14 @@ export class WorkoutsDb {
   async update(row: WorkoutRow): Promise<void> {
     await this.db
       .prepare(
-        'UPDATE workouts SET name = ?, total_duration_sec = ?, interval_sec = ?, warning_lead_sec = ?, updated_at = ? WHERE id = ?'
+        'UPDATE workouts SET name = ?, type = ?, rounds = ?, work_sec = ?, rest_sec = ?, warning_lead_sec = ?, updated_at = ? WHERE id = ?'
       )
       .bind(
         row.name,
-        row.total_duration_sec,
-        row.interval_sec,
+        row.type,
+        row.rounds,
+        row.work_sec,
+        row.rest_sec,
         row.warning_lead_sec,
         row.updated_at,
         row.id

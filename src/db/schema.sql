@@ -9,8 +9,10 @@ CREATE TABLE IF NOT EXISTS workouts (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
   name TEXT NOT NULL,
-  total_duration_sec INTEGER NOT NULL,
-  interval_sec INTEGER NOT NULL,
+  type TEXT NOT NULL DEFAULT 'emom',  -- 'emom' | 'intervals'
+  rounds INTEGER NOT NULL,
+  work_sec INTEGER NOT NULL,          -- EMOM: interval length; Intervals: work phase
+  rest_sec INTEGER NOT NULL DEFAULT 0, -- 0 for EMOM
   warning_lead_sec INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
