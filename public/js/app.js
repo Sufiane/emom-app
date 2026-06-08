@@ -194,6 +194,7 @@ for (const presetBtn of document.querySelectorAll('[data-preset]')) {
 
 function updateFormDerived() {
   byId('w-lead-out').textContent = leadInput.value;
+  leadInput.setAttribute('aria-valuetext', `${leadInput.value} seconds`);
 
   const rounds = Number(roundsInput.value) || 0;
   const total = currentType === 'intervals'
@@ -414,6 +415,31 @@ byId('run-back').addEventListener('click', () => {
     showView('list');
   } else {
     showView('form');
+  }
+});
+
+// Runner keyboard shortcuts. Space = pause/resume, Esc = back, R = reset.
+// Suppressed when an input control is focused.
+document.addEventListener('keydown', (event) => {
+  if (document.body.dataset.view !== 'runner') {
+    return;
+  }
+
+  const tag = event.target.tagName;
+
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    return;
+  }
+
+  if (event.code === 'Space' || event.key === ' ') {
+    event.preventDefault();
+    startBtn.click();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    byId('run-back').click();
+  } else if (event.key === 'r' || event.key === 'R') {
+    event.preventDefault();
+    byId('run-reset').click();
   }
 });
 

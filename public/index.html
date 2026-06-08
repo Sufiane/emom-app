@@ -115,9 +115,9 @@
     <!-- Runner -->
     <section id="view-runner" class="view hidden">
       <h2 id="run-name"></h2>
-      <p id="run-rounds" class="rounds"></p>
-      <div id="run-time" class="big-time">00</div>
-      <p id="run-total" class="muted"></p>
+      <p id="run-rounds" class="rounds" aria-live="polite" aria-atomic="true"></p>
+      <div id="run-time" class="big-time" aria-live="polite" aria-atomic="true">00</div>
+      <p id="run-total" class="muted" aria-live="polite"></p>
       <div class="row">
         <button id="run-start">Start</button>
         <button id="run-reset" class="secondary">Reset</button>

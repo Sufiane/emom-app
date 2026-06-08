@@ -440,3 +440,16 @@ body[data-view="runner"] main {
 .modal .row {
   justify-content: center;
 }
+
+/* Keyboard focus ring — visible on a dark surface, accent color. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+button:focus-visible,
+.link-btn:focus-visible,
+.type-opt:focus-visible {
+  outline-offset: 2px;
+}
