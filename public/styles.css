@@ -14,6 +14,10 @@
   --font-display: 'Anton', 'Arial Narrow', 'Impact', sans-serif;
   --font-cond: 'Barlow Condensed', 'Arial Narrow', sans-serif;
   --font-body: system-ui, -apple-system, sans-serif;
+
+  /* Touch targets — WCAG 2.5.5 minimum 44px; runner controls go bigger. */
+  --control-h: 44px;
+  --control-h-lg: 52px;
 }
 
 * {
@@ -96,7 +100,8 @@ input[type="range"] {
 }
 
 button {
-  padding: 0.65rem 1.1rem;
+  min-height: var(--control-h);
+  padding: 0.5rem 1.1rem;
   border: none;
   border-radius: var(--radius);
   background: var(--accent);
@@ -228,7 +233,8 @@ li button {
 
 .type-opt {
   flex: 1;
-  padding: 0.55rem 0.75rem;
+  min-height: var(--control-h);
+  padding: 0.5rem 0.75rem;
   background: transparent;
   color: var(--muted);
   border: none;
@@ -301,6 +307,12 @@ li button {
 
 #view-runner .row {
   justify-content: center;
+}
+
+#view-runner button,
+#view-runner .link-btn {
+  min-height: var(--control-h-lg);
+  padding-inline: 1.5rem;
 }
 
 /* Phase: WORK keeps the off-white clock + oxblood round label; REST shifts
