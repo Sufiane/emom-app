@@ -1,11 +1,19 @@
 :root {
-  --bg: #0f172a;
-  --surface: #1e293b;
-  --text: #e2e8f0;
-  --muted: #94a3b8;
-  --accent: #38bdf8;
-  --danger: #f87171;
-  --radius: 10px;
+  /* Loud athletic palette: near-black warm, oxblood primary, amber for rest. */
+  --bg: oklch(0.13 0.012 40);
+  --surface: oklch(0.20 0.018 40);
+  --border: oklch(0.27 0.022 40);
+  --text: oklch(0.95 0.012 80);
+  --muted: oklch(0.68 0.018 60);
+  --accent: oklch(0.62 0.21 30);        /* oxblood / cinnabar — primary brand */
+  --accent-ink: oklch(0.12 0.02 30);    /* foreground on accent surfaces */
+  --warn: oklch(0.78 0.16 75);          /* amber — REST phase, secondary */
+  --danger: oklch(0.65 0.22 25);
+  --radius: 4px;
+
+  --font-display: 'Anton', 'Arial Narrow', 'Impact', sans-serif;
+  --font-cond: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --font-body: system-ui, -apple-system, sans-serif;
 }
 
 * {
@@ -14,7 +22,7 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -24,14 +32,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid #334155;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 1.25rem;
-  letter-spacing: 0.15em;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.7rem;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  text-transform: uppercase;
 }
 
 main {
@@ -47,6 +59,12 @@ main {
 
 h2 {
   margin-top: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 2rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-wrap: balance;
 }
 
 label {
@@ -61,11 +79,12 @@ select {
   display: block;
   width: 100%;
   margin-top: 0.35rem;
-  padding: 0.6rem 0.7rem;
+  padding: 0.65rem 0.75rem;
   background: var(--surface);
-  border: 1px solid #334155;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
+  font-family: var(--font-body);
   font-size: 1rem;
 }
 
@@ -74,20 +93,23 @@ input[type="range"] {
 }
 
 button {
-  padding: 0.6rem 1rem;
+  padding: 0.65rem 1.1rem;
   border: none;
   border-radius: var(--radius);
   background: var(--accent);
-  color: #0b1120;
+  color: var(--accent-ink);
+  font-family: var(--font-cond);
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
 button.secondary {
-  background: var(--surface);
+  background: transparent;
   color: var(--text);
-  border: 1px solid #334155;
+  border: 1px solid var(--border);
 }
 
 button.danger {
@@ -100,7 +122,10 @@ button.danger {
   background: none;
   color: var(--accent);
   padding: 0.4rem 0.2rem;
-  font-weight: 500;
+  font-family: var(--font-cond);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .banner {
@@ -108,15 +133,18 @@ button.danger {
   margin: 1rem auto 0;
   padding: 1.1rem 1.25rem;
   background: var(--surface);
-  border: 2px solid var(--accent);
+  border: 1px solid var(--accent);
   border-radius: var(--radius);
   text-align: center;
 }
 
 .banner-title {
   margin: 0 0 0.4rem;
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-family: var(--font-cond);
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--text);
 }
 
@@ -162,12 +190,21 @@ ul {
 
 li {
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.9rem;
   margin-bottom: 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+li strong {
+  font-family: var(--font-cond);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 li button {
@@ -180,7 +217,7 @@ li button {
   display: flex;
   gap: 0;
   background: var(--surface);
-  border: 1px solid #334155;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 4px;
   margin-bottom: 1rem;
@@ -188,17 +225,21 @@ li button {
 
 .type-opt {
   flex: 1;
-  padding: 0.5rem 0.75rem;
+  padding: 0.55rem 0.75rem;
   background: transparent;
   color: var(--muted);
   border: none;
-  border-radius: 6px;
-  font-weight: 600;
+  border-radius: 2px;
+  font-family: var(--font-cond);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .type-opt[aria-selected="true"] {
   background: var(--accent);
-  color: #0b1120;
+  color: var(--accent-ink);
 }
 
 .presets {
@@ -218,22 +259,56 @@ li button {
   text-align: center;
 }
 
-.rounds {
-  font-size: 1.1rem;
-  color: var(--accent);
+#run-name {
+  font-family: var(--font-cond);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   margin: 0.25rem 0;
 }
 
-.big-time {
-  font-size: 5.5rem;
+.rounds {
+  font-family: var(--font-cond);
   font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0.35rem 0;
+}
+
+.big-time {
+  font-family: var(--font-display);
+  font-size: 7rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: 0.95;
   margin: 1rem 0;
+  color: var(--text);
+}
+
+#run-total {
+  font-family: var(--font-cond);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
 }
 
 #view-runner .row {
   justify-content: center;
+}
+
+/* Strip ALL chrome on the runner — the timer owns the surface. */
+body[data-view="runner"] .topbar,
+body[data-view="runner"] #guest-banner,
+body[data-view="runner"] #learn {
+  display: none;
+}
+
+body[data-view="runner"] main {
+  padding-top: 2rem;
 }
 
 /* SEO / informational content */
@@ -247,7 +322,11 @@ li button {
 
 .seo h2 {
   color: var(--text);
-  font-size: 1.3rem;
+  font-family: var(--font-cond);
+  font-weight: 900;
+  font-size: 1.45rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
 .seo h3 {
@@ -274,14 +353,8 @@ li button {
   margin: 0;
 }
 
-/* Landscape: turn the running timer into a full-screen display (phones) */
+/* Landscape: scale the timer to fill the screen on phones. */
 @media (orientation: landscape) and (max-height: 600px) {
-  body[data-view="runner"] .topbar,
-  body[data-view="runner"] #guest-banner,
-  body[data-view="runner"] #learn {
-    display: none;
-  }
-
   body[data-view="runner"] main {
     max-width: none;
     height: 100vh;
@@ -325,7 +398,7 @@ li button {
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.75);
   z-index: 50;
 }
 
@@ -338,7 +411,7 @@ li button {
   max-width: 360px;
   padding: 1.5rem;
   background: var(--surface);
-  border: 2px solid var(--accent);
+  border: 1px solid var(--accent);
   border-radius: var(--radius);
   text-align: center;
 }
