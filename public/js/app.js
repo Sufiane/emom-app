@@ -366,16 +366,16 @@ function onRunFinish() {
   byId('run-rounds').textContent = 'Finished';
 
   if (!loggedIn) {
-    byId('signup-modal').classList.remove('hidden');
+    byId('signup-modal').showModal();
   }
 }
 
 byId('modal-dismiss').addEventListener('click', () => {
-  byId('signup-modal').classList.add('hidden');
+  byId('signup-modal').close();
 });
 
 byId('modal-signup').addEventListener('click', () => {
-  byId('signup-modal').classList.add('hidden');
+  byId('signup-modal').close();
   stopTimer();
   showView('auth');
 });

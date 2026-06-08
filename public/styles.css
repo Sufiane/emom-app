@@ -416,43 +416,32 @@ body[data-view="runner"] main {
   }
 }
 
-/* Sign-up modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.25rem;
-  background: rgba(0, 0, 0, 0.75);
-  z-index: 50;
-}
-
-.modal-overlay.hidden {
-  display: none;
-}
-
-.modal {
-  width: 100%;
-  max-width: 360px;
+/* Sign-up modal — native <dialog> gives focus trap and Esc-to-close. */
+.modal-dialog {
+  width: min(360px, calc(100% - 2.5rem));
   padding: 1.5rem;
   background: var(--surface);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
+  color: var(--text);
   text-align: center;
 }
 
-.modal h2 {
+.modal-dialog::backdrop {
+  background: color-mix(in oklch, var(--bg) 80%, transparent);
+}
+
+.modal-dialog h2 {
   margin: 0 0 0.5rem;
 }
 
-.modal p {
+.modal-dialog p {
   margin: 0 0 1rem;
   color: var(--muted);
   line-height: 1.4;
 }
 
-.modal .row {
+.modal-dialog .row {
   justify-content: center;
 }
 
