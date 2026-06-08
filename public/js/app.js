@@ -328,9 +328,20 @@ function phaseLabel(workout, phase, round) {
   return `Round ${round} / ${workout.rounds}`;
 }
 
+function runnerHeading(workout) {
+  const typeLabel = workout.type === 'intervals' ? 'Intervals' : 'EMOM';
+  const summary = `${typeLabel} · ${workout.rounds} rounds`;
+
+  if (!loggedIn && workout.name === 'Workout') {
+    return summary;
+  }
+
+  return `${workout.name} · ${summary}`;
+}
+
 function openRunner(workout) {
   stopTimer();
-  byId('run-name').textContent = workout.name;
+  byId('run-name').textContent = runnerHeading(workout);
   byId('run-time').textContent = formatClock(workout.work_sec);
   byId('run-rounds').textContent = phaseLabel(workout, 'work', 1);
   byId('run-total').textContent = `Total ${formatClock(workoutTotalSeconds(workout))}`;
