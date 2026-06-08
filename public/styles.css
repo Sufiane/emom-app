@@ -99,6 +99,11 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 
+input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
 button {
   min-height: var(--control-h);
   padding: 0.5rem 1.1rem;
