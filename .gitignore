@@ -8,3 +8,7 @@ dist/
 # Personal Claude Code state — keep .claude/launch.json shared, ignore the rest
 .claude/settings.local.json
 .claude/skills/
+
+# Impeccable scratch — ignore critique snapshots (personal trend log).
+# Keep any future live/config.json that becomes a shared resource.
+.impeccable/critique/
