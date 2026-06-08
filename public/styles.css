@@ -158,6 +158,7 @@ button.danger {
   font-weight: 900;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  text-wrap: balance;
   color: var(--text);
 }
 
@@ -352,6 +353,12 @@ body[data-view="runner"] main {
   line-height: 1.5;
 }
 
+.seo h2,
+.seo h3,
+.seo h4 {
+  text-wrap: balance;
+}
+
 .seo h2 {
   color: var(--text);
   font-family: var(--font-cond);
@@ -371,6 +378,10 @@ body[data-view="runner"] main {
   color: var(--text);
   font-size: 0.95rem;
   margin: 1rem 0 0.25rem;
+}
+
+.seo p {
+  text-wrap: pretty;
 }
 
 .seo ul,
