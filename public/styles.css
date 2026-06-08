@@ -276,6 +276,7 @@ li button {
 #run-name {
   font-family: var(--font-cond);
   font-weight: 900;
+  font-size: 1.4rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   margin: 0.25rem 0;
