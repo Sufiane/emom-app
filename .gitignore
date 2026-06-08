@@ -4,3 +4,7 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# Personal Claude Code state — keep .claude/launch.json shared, ignore the rest
+.claude/settings.local.json
+.claude/skills/
