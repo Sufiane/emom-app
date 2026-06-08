@@ -300,6 +300,17 @@ li button {
   justify-content: center;
 }
 
+/* Phase: WORK keeps the off-white clock + oxblood round label; REST shifts
+   both to amber so you can see the phase change from across the room. */
+#view-runner[data-phase="rest"] .big-time,
+#view-runner[data-phase="rest"] .rounds {
+  color: var(--warn);
+}
+
+#view-runner[data-phase="countdown"] .big-time {
+  color: var(--accent);
+}
+
 /* Strip ALL chrome on the runner — the timer owns the surface. */
 body[data-view="runner"] .topbar,
 body[data-view="runner"] #guest-banner,
