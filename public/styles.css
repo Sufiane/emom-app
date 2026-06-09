@@ -341,7 +341,11 @@ body[data-view="runner"] #learn {
 }
 
 body[data-view="runner"] main {
-  padding-top: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding-top: 0;
 }
 
 /* SEO / informational content */
