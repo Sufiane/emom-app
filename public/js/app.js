@@ -313,10 +313,12 @@ function releaseWakeLock() {
 }
 
 async function lockLandscape() {
+  if (!screen.orientation?.lock) return false;
   try {
-    await screen.orientation?.lock?.('landscape');
+    await screen.orientation.lock('landscape');
+    return true;
   } catch {
-    // Not supported outside standalone PWA, or on iOS — silently ignore.
+    return false;
   }
 }
 
@@ -355,7 +357,7 @@ function runnerHeading(workout) {
   return `${workout.name} · ${summary}`;
 }
 
-function openRunner(workout) {
+async function openRunner(workout) {
   stopTimer();
   byId('run-name').textContent = runnerHeading(workout);
   byId('run-time').textContent = formatClock(workout.work_sec);
@@ -366,7 +368,8 @@ function openRunner(workout) {
   startBtn.dataset.state = 'idle';
   startBtn.dataset.workout = JSON.stringify(workout);
   showView('runner');
-  lockLandscape();
+  const locked = await lockLandscape();
+  byId('run-rotate').classList.toggle('hidden', locked);
 }
 
 function onRunUpdate(state) {
@@ -436,8 +439,13 @@ byId('run-reset').addEventListener('click', () => {
   openRunner(workout);
 });
 
+byId('run-rotate').addEventListener('click', () => {
+  document.body.classList.toggle('landscape-rotate');
+});
+
 byId('run-back').addEventListener('click', () => {
   stopTimer();
+  document.body.classList.remove('landscape-rotate');
   unlockOrientation();
 
   if (loggedIn) {

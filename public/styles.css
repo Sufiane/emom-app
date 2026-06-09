@@ -433,6 +433,52 @@ body[data-view="runner"] main {
   }
 }
 
+/* CSS-based landscape rotation for iOS Safari and plain browser tabs where
+   screen.orientation.lock() is unavailable. The element is sized as the
+   rotated landscape footprint (100vh × 100vw) and centred so its corners
+   land exactly on the portrait viewport corners after the 90° rotation. */
+body[data-view="runner"].landscape-rotate main {
+  position: fixed;
+  top: calc(50vh - 50vw);
+  left: calc(50vw - 50vh);
+  width: 100vh;
+  height: 100vw;
+  max-width: none;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  transform: rotate(90deg);
+  transform-origin: center center;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body[data-view="runner"].landscape-rotate #view-runner {
+  width: 100%;
+}
+
+body[data-view="runner"].landscape-rotate #run-name {
+  font-size: 1rem;
+  margin: 0;
+}
+
+body[data-view="runner"].landscape-rotate .rounds {
+  font-size: 1rem;
+  margin: 0.1rem 0;
+}
+
+body[data-view="runner"].landscape-rotate .big-time {
+  /* vw = shorter side in portrait = landscape height — keeps timer proportional */
+  font-size: clamp(4rem, 45vw, 16rem);
+  margin: 0.2rem 0;
+}
+
+body[data-view="runner"].landscape-rotate #run-total {
+  font-size: 0.85rem;
+  margin: 0.1rem 0;
+}
+
 /* Sign-up modal — native <dialog> gives focus trap and Esc-to-close. */
 .modal-dialog {
   width: min(360px, calc(100% - 2.5rem));
