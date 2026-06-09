@@ -4,6 +4,7 @@
   "description": "Run and save EMOM interval workouts.",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#1a1108",
   "theme_color": "#1a1108",
   "icons": [

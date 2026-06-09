@@ -312,6 +312,22 @@ function releaseWakeLock() {
   }
 }
 
+async function lockLandscape() {
+  try {
+    await screen.orientation?.lock?.('landscape');
+  } catch {
+    // Not supported outside standalone PWA, or on iOS — silently ignore.
+  }
+}
+
+function unlockOrientation() {
+  try {
+    screen.orientation?.unlock?.();
+  } catch {
+    // Ignore.
+  }
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && timer != null && !timer.paused && !timer.finished) {
     acquireWakeLock();
@@ -350,6 +366,7 @@ function openRunner(workout) {
   startBtn.dataset.state = 'idle';
   startBtn.dataset.workout = JSON.stringify(workout);
   showView('runner');
+  lockLandscape();
 }
 
 function onRunUpdate(state) {
@@ -421,6 +438,7 @@ byId('run-reset').addEventListener('click', () => {
 
 byId('run-back').addEventListener('click', () => {
   stopTimer();
+  unlockOrientation();
 
   if (loggedIn) {
     showView('list');
