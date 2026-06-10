@@ -312,14 +312,33 @@ li button {
   font-size: 0.85rem;
 }
 
-#view-runner .row {
-  justify-content: center;
+#view-runner > .row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.runner-btns-secondary {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.runner-btns-secondary > * {
+  flex: 1;
 }
 
 #view-runner button,
 #view-runner .link-btn {
   min-height: var(--control-h-lg);
   padding-inline: 1.5rem;
+}
+
+/* Filled state when awaiting double-tap confirm */
+#run-reset[data-confirm="true"] {
+  background: var(--danger);
+  color: var(--accent-ink);
+  border-color: var(--danger);
 }
 
 /* Phase: WORK keeps the off-white clock + oxblood round label; REST shifts

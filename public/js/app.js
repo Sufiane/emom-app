@@ -434,9 +434,25 @@ startBtn.addEventListener('click', () => {
   }
 });
 
+let resetConfirmTimer = null;
+
 byId('run-reset').addEventListener('click', () => {
-  const workout = JSON.parse(startBtn.dataset.workout);
-  openRunner(workout);
+  const btn = byId('run-reset');
+
+  if (btn.dataset.confirm === 'true') {
+    clearTimeout(resetConfirmTimer);
+    btn.dataset.confirm = 'false';
+    btn.textContent = 'Reset';
+    const workout = JSON.parse(startBtn.dataset.workout);
+    openRunner(workout);
+  } else {
+    btn.dataset.confirm = 'true';
+    btn.textContent = 'Sure?';
+    resetConfirmTimer = setTimeout(() => {
+      btn.dataset.confirm = 'false';
+      btn.textContent = 'Reset';
+    }, 3000);
+  }
 });
 
 byId('run-rotate').addEventListener('click', () => {
