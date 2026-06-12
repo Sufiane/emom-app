@@ -364,9 +364,12 @@ async function openRunner(workout) {
   byId('run-rounds').textContent = phaseLabel(workout, 'work', 1);
   byId('run-total').textContent = `Total ${formatClock(workoutTotalSeconds(workout))}`;
   runnerSection.dataset.phase = 'work';
+  runnerSection.dataset.state = 'idle';
   startBtn.textContent = 'Start';
-  startBtn.dataset.state = 'idle';
   startBtn.dataset.workout = JSON.stringify(workout);
+  const resetBtn = byId('run-reset');
+  resetBtn.dataset.confirm = 'false';
+  resetBtn.textContent = 'Reset';
   showView('runner');
   const locked = await lockLandscape();
   byId('run-rotate').classList.toggle('hidden', locked);
@@ -392,8 +395,8 @@ function onRunUpdate(state) {
 
 function onRunFinish() {
   releaseWakeLock();
-  startBtn.textContent = 'Done';
-  startBtn.dataset.state = 'done';
+  startBtn.textContent = 'Run again';
+  runnerSection.dataset.state = 'done';
   byId('run-rounds').textContent = 'Finished';
 
   if (!loggedIn) {
@@ -412,25 +415,36 @@ byId('modal-signup').addEventListener('click', () => {
 });
 
 startBtn.addEventListener('click', () => {
-  const state = startBtn.dataset.state;
+  const state = runnerSection.dataset.state;
 
   if (state === 'idle' || state === 'done') {
     const workout = JSON.parse(startBtn.dataset.workout);
     timer = new WorkoutTimer(workout, onRunUpdate, onRunFinish);
     timer.start();
     acquireWakeLock();
-    startBtn.textContent = 'Pause';
-    startBtn.dataset.state = 'running';
-  } else if (state === 'running') {
+    runnerSection.dataset.state = 'running';
+  }
+});
+
+function togglePause() {
+  const state = runnerSection.dataset.state;
+
+  if (state === 'running' && timer != null) {
     timer.pause();
     releaseWakeLock();
-    startBtn.textContent = 'Resume';
-    startBtn.dataset.state = 'paused';
-  } else if (state === 'paused') {
+    runnerSection.dataset.state = 'paused';
+  } else if (state === 'paused' && timer != null) {
     timer.resume();
     acquireWakeLock();
-    startBtn.textContent = 'Pause';
-    startBtn.dataset.state = 'running';
+    runnerSection.dataset.state = 'running';
+  }
+}
+
+byId('run-time').addEventListener('click', togglePause);
+byId('run-time').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    togglePause();
   }
 });
 
@@ -486,7 +500,13 @@ document.addEventListener('keydown', (event) => {
 
   if (event.code === 'Space' || event.key === ' ') {
     event.preventDefault();
-    startBtn.click();
+    const state = runnerSection.dataset.state;
+
+    if (state === 'running' || state === 'paused') {
+      togglePause();
+    } else {
+      startBtn.click();
+    }
   } else if (event.key === 'Escape') {
     event.preventDefault();
     byId('run-back').click();

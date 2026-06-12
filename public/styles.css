@@ -272,6 +272,14 @@ li button {
 /* Runner */
 #view-runner {
   text-align: center;
+  position: relative;
+  width: 100%;
+}
+
+.runner-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 #run-name {
@@ -302,6 +310,23 @@ li button {
   line-height: 0.95;
   margin: 1rem 0;
   color: var(--text);
+  /* Tappable surface — the timer IS the pause/resume control once running. */
+  background: transparent;
+  border: none;
+  padding: 0.25rem 0;
+  cursor: default;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  width: 100%;
+}
+
+#view-runner[data-state="running"] .big-time,
+#view-runner[data-state="paused"] .big-time {
+  cursor: pointer;
+}
+
+#view-runner[data-state="paused"] .big-time {
+  opacity: 0.55;
 }
 
 #run-total {
@@ -312,33 +337,94 @@ li button {
   font-size: 0.85rem;
 }
 
-#view-runner > .row {
+.run-hint {
+  font-family: var(--font-cond);
+  font-weight: 500;
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin: 0.6rem 0 0;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+
+#view-runner[data-state="running"] .run-hint,
+#view-runner[data-state="paused"] .run-hint {
+  opacity: 1;
+}
+
+/* Action stack: one primary CTA per state, never two equal-weight peers. */
+.runner-actions {
+  display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.75rem;
+  gap: 0.6rem;
+  width: 100%;
+  margin-top: 1.25rem;
+}
+
+.run-start,
+.run-reset {
+  min-height: var(--control-h-lg);
+  padding-inline: 1.5rem;
   width: 100%;
 }
 
-.runner-btns-secondary {
-  display: flex;
-  gap: 0.75rem;
+/* Start is the hero only when idle / finished. Hidden mid-workout — the
+   timer surface owns pause/resume. */
+#view-runner[data-state="running"] .run-start,
+#view-runner[data-state="paused"] .run-start {
+  display: none;
 }
 
-.runner-btns-secondary > * {
-  flex: 1;
+/* Reset is dormant until there's something to reset. Muted at rest so it
+   doesn't compete with the timer; turns danger only after first tap. */
+.run-reset {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
 }
 
-#view-runner button,
-#view-runner .link-btn {
-  min-height: var(--control-h-lg);
-  padding-inline: 1.5rem;
+#view-runner[data-state="idle"] .run-reset {
+  display: none;
 }
 
-/* Filled state when awaiting double-tap confirm */
 #run-reset[data-confirm="true"] {
   background: var(--danger);
   color: var(--accent-ink);
   border-color: var(--danger);
+}
+
+/* Top-corner chrome — Back (left) and Rotate (right). Muted icon buttons
+   that sit out of the timer's way. */
+.runner-chrome {
+  position: fixed;
+  top: max(0.5rem, env(safe-area-inset-top));
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 50%;
+  z-index: 10;
+}
+
+.runner-chrome:hover,
+.runner-chrome:focus-visible {
+  color: var(--text);
+}
+
+.runner-chrome-back {
+  left: max(0.5rem, env(safe-area-inset-left));
+}
+
+.runner-chrome-rotate {
+  right: max(0.5rem, env(safe-area-inset-right));
 }
 
 /* Phase: WORK keeps the off-white clock + oxblood round label; REST shifts
@@ -454,6 +540,22 @@ body[data-view="runner"] main {
     font-size: 0.85rem;
     margin: 0.1rem 0;
   }
+
+  body[data-view="runner"] .runner-actions {
+    margin-top: 0.4rem;
+  }
+
+  body[data-view="runner"] .run-start,
+  body[data-view="runner"] .run-reset {
+    min-height: 40px;
+    width: auto;
+    align-self: center;
+    padding-inline: 1.75rem;
+  }
+
+  body[data-view="runner"] .run-hint {
+    display: none;
+  }
 }
 
 /* CSS-based landscape rotation for iOS Safari and plain browser tabs where
@@ -500,6 +602,22 @@ body[data-view="runner"].landscape-rotate .big-time {
 body[data-view="runner"].landscape-rotate #run-total {
   font-size: 0.85rem;
   margin: 0.1rem 0;
+}
+
+body[data-view="runner"].landscape-rotate .runner-actions {
+  margin-top: 0.4rem;
+}
+
+body[data-view="runner"].landscape-rotate .run-start,
+body[data-view="runner"].landscape-rotate .run-reset {
+  min-height: 40px;
+  width: auto;
+  align-self: center;
+  padding-inline: 1.75rem;
+}
+
+body[data-view="runner"].landscape-rotate .run-hint {
+  display: none;
 }
 
 /* Sign-up modal — native <dialog> gives focus trap and Esc-to-close. */
