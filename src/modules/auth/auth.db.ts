@@ -1,21 +1,26 @@
+import type { Email } from '../../lib/brand/email';
+import type { PasswordHash } from '../../lib/brand/password-hash';
+import type { UnixMs } from '../../lib/brand/unix-ms';
+import type { UserId } from '../../lib/brand/user-id';
+
 export type UserRow = {
-  id: string;
-  email: string;
-  password_hash: string;
-  created_at: number;
+  id: UserId;
+  email: Email;
+  password_hash: PasswordHash;
+  created_at: UnixMs;
 };
 
 export class AuthDb {
   constructor(private db: D1Database) {}
 
-  findByEmail(email: string): Promise<UserRow | null> {
+  findByEmail(email: Email): Promise<UserRow | null> {
     return this.db
       .prepare('SELECT * FROM users WHERE email = ?')
       .bind(email)
       .first<UserRow>();
   }
 
-  findById(id: string): Promise<UserRow | null> {
+  findById(id: UserId): Promise<UserRow | null> {
     return this.db
       .prepare('SELECT * FROM users WHERE id = ?')
       .bind(id)

@@ -1,3 +1,5 @@
+import type { UserId } from './lib/brand/user-id';
+
 export type Bindings = {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -5,7 +7,7 @@ export type Bindings = {
 };
 
 export type Variables = {
-  userId: string;
+  userId: UserId;
 };
 
 export type AppEnv = {

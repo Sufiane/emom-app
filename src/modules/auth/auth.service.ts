@@ -1,22 +1,25 @@
 import { HTTPException } from 'hono/http-exception';
 import { hashPassword, verifyPassword, randomId } from '../../lib/crypto';
+import { makeEmail, type Email } from '../../lib/brand/email';
+import { makePasswordHash } from '../../lib/brand/password-hash';
+import { nowMs } from '../../lib/brand/unix-ms';
+import { makeUserId, type UserId } from '../../lib/brand/user-id';
 import { AuthDb } from './auth.db';
 
 export type PublicUser = {
-  id: string;
-  email: string;
+  id: UserId;
+  email: Email;
 };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
 export class AuthService {
   constructor(private db: AuthDb) {}
 
-  async register(email: string, password: string): Promise<PublicUser> {
-    const normalizedEmail = normalizeEmail(email);
+  async register(email: unknown, password: unknown): Promise<PublicUser> {
+    const normalizedEmail = makeEmail(email);
 
-    validateCredentials(normalizedEmail, password);
+    validatePassword(password);
 
     const existing = await this.db.findByEmail(normalizedEmail);
 
@@ -24,12 +27,12 @@ export class AuthService {
       throw new HTTPException(409, { message: 'email already registered' });
     }
 
-    const passwordHash = await hashPassword(password);
+    const passwordHash = makePasswordHash(await hashPassword(password as string));
     const user = {
-      id: randomId(),
+      id: makeUserId(randomId()),
       email: normalizedEmail,
       password_hash: passwordHash,
-      created_at: Date.now()
+      created_at: nowMs()
     };
 
     await this.db.insert(user);
@@ -37,15 +40,18 @@ export class AuthService {
     return { id: user.id, email: user.email };
   }
 
-  async login(email: string, password: string): Promise<PublicUser> {
-    const normalizedEmail = normalizeEmail(email);
+  async login(email: unknown, password: unknown): Promise<PublicUser> {
+    const normalizedEmail = makeEmail(email);
+
+    validatePassword(password);
+
     const user = await this.db.findByEmail(normalizedEmail);
 
     if (user == null) {
       throw new HTTPException(401, { message: 'invalid credentials' });
     }
 
-    const valid = await verifyPassword(password, user.password_hash);
+    const valid = await verifyPassword(password as string, user.password_hash);
 
     if (!valid) {
       throw new HTTPException(401, { message: 'invalid credentials' });
@@ -54,7 +60,7 @@ export class AuthService {
     return { id: user.id, email: user.email };
   }
 
-  async getById(id: string): Promise<PublicUser> {
+  async getById(id: UserId): Promise<PublicUser> {
     const user = await this.db.findById(id);
 
     if (user == null) {
@@ -65,15 +71,7 @@ export class AuthService {
   }
 }
 
-function normalizeEmail(email: string): string {
-  return typeof email === 'string' ? email.trim().toLowerCase() : '';
-}
-
-function validateCredentials(email: string, password: string): void {
-  if (!EMAIL_PATTERN.test(email)) {
-    throw new HTTPException(400, { message: 'invalid email' });
-  }
-
+function validatePassword(password: unknown): void {
   if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
     throw new HTTPException(400, { message: `password must be at least ${MIN_PASSWORD_LENGTH} characters` });
   }

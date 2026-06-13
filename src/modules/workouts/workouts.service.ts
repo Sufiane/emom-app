@@ -1,34 +1,57 @@
 import { HTTPException } from 'hono/http-exception';
 import { randomId } from '../../lib/crypto';
+import { makeEmomIntervalSec, type EmomIntervalSec } from '../../lib/brand/emom-interval-sec';
+import { makeRestPhaseSec, type RestPhaseSec } from '../../lib/brand/rest-phase-sec';
+import { makeRounds, type Rounds } from '../../lib/brand/rounds';
+import { nowMs } from '../../lib/brand/unix-ms';
+import type { UserId } from '../../lib/brand/user-id';
+import { makeWarningLeadSec, type WarningLeadSec } from '../../lib/brand/warning-lead-sec';
+import { makeWorkPhaseSec, type WorkPhaseSec } from '../../lib/brand/work-phase-sec';
+import { makeWorkoutId, type WorkoutId } from '../../lib/brand/workout-id';
+import { makeWorkoutName, type WorkoutName } from '../../lib/brand/workout-name';
 import { WorkoutsDb, type WorkoutRow, type WorkoutType } from './workouts.db';
 
 export type WorkoutInput = {
-  name: string;
+  name: unknown;
   type: WorkoutType;
-  rounds: number;
-  work_sec: number;
-  rest_sec: number;
-  warning_lead_sec: number;
+  rounds: unknown;
+  work_sec: unknown;
+  rest_sec: unknown;
+  warning_lead_sec: unknown;
 };
 
-const EMOM_INTERVALS = [30, 60, 90, 120];
-const MIN_WARNING_LEAD = 3;
-const MAX_WARNING_LEAD = 15;
-const MAX_ROUNDS = 120;
-const MAX_PHASE_SEC = 600;
+type EmomClean = {
+  name: WorkoutName;
+  type: 'emom';
+  rounds: Rounds;
+  work_sec: EmomIntervalSec;
+  rest_sec: 0;
+  warning_lead_sec: WarningLeadSec;
+};
+
+type IntervalsClean = {
+  name: WorkoutName;
+  type: 'intervals';
+  rounds: Rounds;
+  work_sec: WorkPhaseSec;
+  rest_sec: RestPhaseSec;
+  warning_lead_sec: WarningLeadSec;
+};
+
+type CleanInput = EmomClean | IntervalsClean;
 
 export class WorkoutsService {
   constructor(private db: WorkoutsDb) {}
 
-  list(userId: string): Promise<WorkoutRow[]> {
+  list(userId: UserId): Promise<WorkoutRow[]> {
     return this.db.listByUser(userId);
   }
 
-  async create(userId: string, input: WorkoutInput): Promise<WorkoutRow> {
+  async create(userId: UserId, input: WorkoutInput): Promise<WorkoutRow> {
     const clean = validateInput(input);
-    const now = Date.now();
+    const now = nowMs();
     const row: WorkoutRow = {
-      id: randomId(),
+      id: makeWorkoutId(randomId()),
       user_id: userId,
       ...clean,
       created_at: now,
@@ -40,13 +63,15 @@ export class WorkoutsService {
     return row;
   }
 
-  async update(userId: string, id: string, input: WorkoutInput): Promise<WorkoutRow> {
+  async update(userId: UserId, id: WorkoutId, input: WorkoutInput): Promise<WorkoutRow> {
     const existing = await this.owned(userId, id);
     const clean = validateInput(input);
     const row: WorkoutRow = {
-      ...existing,
+      id: existing.id,
+      user_id: existing.user_id,
+      created_at: existing.created_at,
       ...clean,
-      updated_at: Date.now()
+      updated_at: nowMs()
     };
 
     await this.db.update(row);
@@ -54,12 +79,12 @@ export class WorkoutsService {
     return row;
   }
 
-  async remove(userId: string, id: string): Promise<void> {
+  async remove(userId: UserId, id: WorkoutId): Promise<void> {
     await this.owned(userId, id);
     await this.db.deleteById(id);
   }
 
-  private async owned(userId: string, id: string): Promise<WorkoutRow> {
+  private async owned(userId: UserId, id: WorkoutId): Promise<WorkoutRow> {
     const existing = await this.db.findById(id);
 
     if (existing == null || existing.user_id !== userId) {
@@ -70,28 +95,15 @@ export class WorkoutsService {
   }
 }
 
-function validateInput(input: WorkoutInput): WorkoutInput {
-  const name = typeof input.name === 'string' ? input.name.trim() : '';
-
-  if (name.length === 0) {
-    throw new HTTPException(400, { message: 'name is required' });
-  }
+function validateInput(input: WorkoutInput): CleanInput {
+  const name = makeWorkoutName(input.name);
 
   if (input.type !== 'emom' && input.type !== 'intervals') {
     throw new HTTPException(400, { message: 'type must be "emom" or "intervals"' });
   }
 
-  const rounds = input.rounds;
-
-  if (!Number.isInteger(rounds) || rounds < 1 || rounds > MAX_ROUNDS) {
-    throw new HTTPException(400, { message: `rounds must be between 1 and ${MAX_ROUNDS}` });
-  }
-
-  const warningLead = input.warning_lead_sec;
-
-  if (!Number.isInteger(warningLead) || warningLead < MIN_WARNING_LEAD || warningLead > MAX_WARNING_LEAD) {
-    throw new HTTPException(400, { message: `warning_lead_sec must be between ${MIN_WARNING_LEAD} and ${MAX_WARNING_LEAD}` });
-  }
+  const rounds = makeRounds(input.rounds);
+  const warningLead = makeWarningLeadSec(input.warning_lead_sec);
 
   if (input.type === 'emom') {
     return validateEmom(name, rounds, warningLead, input.work_sec, input.rest_sec);
@@ -101,21 +113,19 @@ function validateInput(input: WorkoutInput): WorkoutInput {
 }
 
 function validateEmom(
-  name: string,
-  rounds: number,
-  warningLead: number,
-  workSec: number,
-  restSec: number
-): WorkoutInput {
-  if (!EMOM_INTERVALS.includes(workSec)) {
-    throw new HTTPException(400, { message: 'interval (work_sec) must be one of 30, 60, 90, 120' });
-  }
+  name: WorkoutName,
+  rounds: Rounds,
+  warningLead: WarningLeadSec,
+  workSecRaw: unknown,
+  restSecRaw: unknown
+): EmomClean {
+  const workSec = makeEmomIntervalSec(workSecRaw);
 
   if (warningLead >= workSec) {
     throw new HTTPException(400, { message: 'warning_lead_sec must be shorter than the interval' });
   }
 
-  if (restSec !== 0 && restSec != null) {
+  if (restSecRaw !== 0 && restSecRaw != null) {
     throw new HTTPException(400, { message: 'rest_sec must be 0 for EMOM workouts' });
   }
 
@@ -123,19 +133,14 @@ function validateEmom(
 }
 
 function validateIntervals(
-  name: string,
-  rounds: number,
-  warningLead: number,
-  workSec: number,
-  restSec: number
-): WorkoutInput {
-  if (!Number.isInteger(workSec) || workSec < 5 || workSec > MAX_PHASE_SEC) {
-    throw new HTTPException(400, { message: `work_sec must be between 5 and ${MAX_PHASE_SEC}` });
-  }
-
-  if (!Number.isInteger(restSec) || restSec < 1 || restSec > MAX_PHASE_SEC) {
-    throw new HTTPException(400, { message: `rest_sec must be between 1 and ${MAX_PHASE_SEC}` });
-  }
+  name: WorkoutName,
+  rounds: Rounds,
+  warningLead: WarningLeadSec,
+  workSecRaw: unknown,
+  restSecRaw: unknown
+): IntervalsClean {
+  const workSec = makeWorkPhaseSec(workSecRaw);
+  const restSec = makeRestPhaseSec(restSecRaw);
 
   if (warningLead >= workSec || warningLead >= restSec) {
     throw new HTTPException(400, { message: 'warning_lead_sec must be shorter than both work and rest' });

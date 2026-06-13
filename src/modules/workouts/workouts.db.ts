@@ -1,22 +1,43 @@
+import type { EmomIntervalSec } from '../../lib/brand/emom-interval-sec';
+import type { RestPhaseSec } from '../../lib/brand/rest-phase-sec';
+import type { Rounds } from '../../lib/brand/rounds';
+import type { UnixMs } from '../../lib/brand/unix-ms';
+import type { UserId } from '../../lib/brand/user-id';
+import type { WarningLeadSec } from '../../lib/brand/warning-lead-sec';
+import type { WorkPhaseSec } from '../../lib/brand/work-phase-sec';
+import type { WorkoutId } from '../../lib/brand/workout-id';
+import type { WorkoutName } from '../../lib/brand/workout-name';
+
 export type WorkoutType = 'emom' | 'intervals';
 
-export type WorkoutRow = {
-  id: string;
-  user_id: string;
-  name: string;
-  type: WorkoutType;
-  rounds: number;
-  work_sec: number;
-  rest_sec: number;
-  warning_lead_sec: number;
-  created_at: number;
-  updated_at: number;
+type WorkoutBase = {
+  id: WorkoutId;
+  user_id: UserId;
+  name: WorkoutName;
+  rounds: Rounds;
+  warning_lead_sec: WarningLeadSec;
+  created_at: UnixMs;
+  updated_at: UnixMs;
 };
+
+export type EmomWorkoutRow = WorkoutBase & {
+  type: 'emom';
+  work_sec: EmomIntervalSec;
+  rest_sec: 0;
+};
+
+export type IntervalsWorkoutRow = WorkoutBase & {
+  type: 'intervals';
+  work_sec: WorkPhaseSec;
+  rest_sec: RestPhaseSec;
+};
+
+export type WorkoutRow = EmomWorkoutRow | IntervalsWorkoutRow;
 
 export class WorkoutsDb {
   constructor(private db: D1Database) {}
 
-  async listByUser(userId: string): Promise<WorkoutRow[]> {
+  async listByUser(userId: UserId): Promise<WorkoutRow[]> {
     const result = await this.db
       .prepare('SELECT * FROM workouts WHERE user_id = ? ORDER BY created_at DESC')
       .bind(userId)
@@ -25,7 +46,7 @@ export class WorkoutsDb {
     return result.results;
   }
 
-  findById(id: string): Promise<WorkoutRow | null> {
+  findById(id: WorkoutId): Promise<WorkoutRow | null> {
     return this.db
       .prepare('SELECT * FROM workouts WHERE id = ?')
       .bind(id)
@@ -70,7 +91,7 @@ export class WorkoutsDb {
       .run();
   }
 
-  async deleteById(id: string): Promise<void> {
+  async deleteById(id: WorkoutId): Promise<void> {
     await this.db.prepare('DELETE FROM workouts WHERE id = ?').bind(id).run();
   }
 }

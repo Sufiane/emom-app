@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { verify } from 'hono/jwt';
 import type { AppEnv } from '../types';
+import { makeUserId } from './brand/user-id';
 
 export const AUTH_COOKIE = 'token';
 
@@ -20,7 +21,7 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (context, next) => {
       return context.json({ error: 'unauthorized' }, 401);
     }
 
-    context.set('userId', sub);
+    context.set('userId', makeUserId(sub));
   } catch {
     return context.json({ error: 'unauthorized' }, 401);
   }
