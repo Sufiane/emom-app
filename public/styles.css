@@ -58,7 +58,7 @@ main {
 
 .view.hidden,
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 h2 {
@@ -396,14 +396,16 @@ li button {
 }
 
 /* Top-corner chrome — Back (left) and Rotate (right). Muted icon buttons
-   that sit out of the timer's way. */
+   that sit out of the timer's way. Lives outside <main> in the DOM and
+   defaults to hidden so it only appears over the runner view; see the
+   index.html comment for why it can't be a descendant of main. */
 .runner-chrome {
+  display: none;
   position: fixed;
   top: max(0.5rem, env(safe-area-inset-top));
   width: 44px;
   height: 44px;
   min-height: 44px;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -412,6 +414,10 @@ li button {
   border: none;
   border-radius: 50%;
   z-index: 10;
+}
+
+body[data-view="runner"] .runner-chrome {
+  display: inline-flex;
 }
 
 .runner-chrome:hover,
