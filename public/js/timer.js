@@ -157,7 +157,6 @@ function playCountBeep(ctx, time) {
 }
 
 const COUNTDOWN_SECONDS = 3;
-const SCHEDULE_LOOK_AHEAD = 4;
 
 // Mellow descending two-tone marking the start of a rest phase — clearly
 // softer and lower than the bright work bell.
@@ -259,7 +258,6 @@ export class WorkoutTimer {
     this.startTime = now + COUNTDOWN_SECONDS + 0.15;
     this.finished = false;
     this.segments = this.buildSegments();
-    this.scheduledUpTo = -1;
 
     for (let n = 0; n < COUNTDOWN_SECONDS; n++) {
       playCountBeep(this.ctx, now + 0.15 + n);
@@ -268,8 +266,14 @@ export class WorkoutTimer {
     // Bell at the very first work-phase start.
     playBell(this.ctx, this.startTime);
 
-    // Schedule the first batch; the run loop refills as segments complete.
-    this.ensureScheduled(SCHEDULE_LOOK_AHEAD - 1);
+    // Schedule every cue up front against the audio clock. Web Audio
+    // continues to fire scheduled events even when the page is hidden and
+    // requestAnimationFrame is throttled, so the workout still beeps
+    // through a backgrounded tab.
+    for (let i = 0; i < this.segments.length; i++) {
+      this.scheduleSegmentEndCues(i);
+    }
+
     this.loop();
   }
 
@@ -292,16 +296,6 @@ export class WorkoutTimer {
       playBell(this.ctx, seg.end);
     } else {
       playRestCue(this.ctx, seg.end);
-    }
-  }
-
-  ensureScheduled(throughIndex) {
-    const last = this.segments.length - 1;
-    const target = Math.min(throughIndex, last);
-
-    while (this.scheduledUpTo < target) {
-      this.scheduledUpTo++;
-      this.scheduleSegmentEndCues(this.scheduledUpTo);
     }
   }
 
@@ -335,18 +329,13 @@ export class WorkoutTimer {
 
       const nowTime = this.ctx.currentTime;
       let current = this.segments[this.segments.length - 1];
-      let currentIdx = this.segments.length - 1;
 
       for (let i = 0; i < this.segments.length; i++) {
         if (nowTime < this.segments[i].end) {
           current = this.segments[i];
-          currentIdx = i;
           break;
         }
       }
-
-      // Refill the scheduling window so it stays bounded for long workouts.
-      this.ensureScheduled(currentIdx + SCHEDULE_LOOK_AHEAD);
 
       this.onUpdate({
         phase: current.kind,

@@ -331,7 +331,15 @@ function unlockOrientation() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && timer != null && !timer.paused && !timer.finished) {
+  if (document.visibilityState !== 'visible' || timer == null || timer.finished) {
+    return;
+  }
+
+  // Mobile browsers auto-suspend the AudioContext while backgrounded.
+  // If the user hadn't actually paused, kick audio back on and re-grab
+  // the screen wake lock now that the page is foregrounded again.
+  if (runnerSection.dataset.state === 'running') {
+    timer.resume();
     acquireWakeLock();
   }
 });
