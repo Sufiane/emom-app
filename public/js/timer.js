@@ -1,5 +1,8 @@
-// EMOM timer engine. All sounds are synthesized and scheduled on the
-// AudioContext clock so timing does not drift the way setTimeout would.
+// EMOM timer engine. The workout's cue timeline is rendered up front
+// into a single audio track and played through an <audio> element so
+// bells and ticks keep firing even when the app is backgrounded — the
+// Web Audio clock is auto-suspended by mobile OSs when the tab loses
+// focus, which is what used to silence the workout entirely.
 
 // Shared output bus: a brick-wall-ish limiter so everything can be driven
 // loud and punchy without harsh clipping at the destination.
@@ -156,8 +159,6 @@ function playCountBeep(ctx, time) {
   osc.stop(time + 0.22);
 }
 
-const COUNTDOWN_SECONDS = 3;
-
 // Mellow descending two-tone marking the start of a rest phase — clearly
 // softer and lower than the bright work bell.
 function playRestCue(ctx, time) {
@@ -215,15 +216,91 @@ function playTickTock(ctx, time, high) {
   osc.stop(time + 0.06);
 }
 
+// One-sample silent WAV. Playing this on the <audio> element inside the
+// Start click captures user activation for that element, so the later
+// swap to the rendered workout track (after an await for rendering) is
+// allowed to auto-play on iOS.
+function silentWavUrl() {
+  const bytes = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0x26, 0x00, 0x00, 0x00,
+    0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74, 0x20,
+    0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+    0x44, 0xac, 0x00, 0x00, 0x88, 0x58, 0x01, 0x00,
+    0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61,
+    0x02, 0x00, 0x00, 0x00, 0x00, 0x00
+  ]);
+
+  return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+}
+
+// Encode a rendered AudioBuffer to a 16-bit PCM WAV Blob so it can be
+// played through an HTMLAudioElement.
+function encodeWav(audioBuffer) {
+  const numChannels = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  const blockAlign = numChannels * 2;
+  const dataSize = audioBuffer.length * blockAlign;
+  const fileSize = 44 + dataSize;
+
+  const out = new ArrayBuffer(fileSize);
+  const view = new DataView(out);
+
+  const writeString = (offset, text) => {
+    for (let i = 0; i < text.length; i++) {
+      view.setUint8(offset + i, text.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, fileSize - 8, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  const channels = [];
+
+  for (let c = 0; c < numChannels; c++) {
+    channels.push(audioBuffer.getChannelData(c));
+  }
+
+  let offset = 44;
+
+  for (let i = 0; i < audioBuffer.length; i++) {
+    for (let c = 0; c < numChannels; c++) {
+      const sample = Math.max(-1, Math.min(1, channels[c][i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([out], { type: 'audio/wav' });
+}
+
+const RENDER_SAMPLE_RATE = 22050;
+const COUNTDOWN_SECONDS = 3;
+const PREROLL_LEAD = 0.15;
+const RENDER_TAIL_SECONDS = 3;
+
 export class WorkoutTimer {
   constructor(workout, onUpdate, onFinish) {
     this.workout = workout;
     this.onUpdate = onUpdate;
     this.onFinish = onFinish;
-    this.ctx = null;
+    this.audio = null;
+    this.objectUrl = null;
+    this.silentUrl = null;
     this.startTime = 0;
     this.rafId = 0;
     this.finished = false;
+    this.stopped = false;
     this.segments = [];
   }
 
@@ -252,61 +329,124 @@ export class WorkoutTimer {
   }
 
   start() {
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Prime the <audio> element inside the caller's user gesture. The
+    // async render below would otherwise break the activation chain on
+    // iOS. Playing a one-sample silent WAV now claims the play()
+    // capability for this specific element so subsequent src swaps and
+    // play() calls are permitted without a fresh gesture.
+    this.silentUrl = silentWavUrl();
+    this.audio = new Audio();
+    this.audio.preload = 'auto';
+    this.audio.playsInline = true;
+    this.audio.src = this.silentUrl;
+    const primePromise = this.audio.play().catch(() => {});
 
-    const now = this.ctx.currentTime;
-    this.startTime = now + COUNTDOWN_SECONDS + 0.15;
+    this.startTime = COUNTDOWN_SECONDS + PREROLL_LEAD;
     this.finished = false;
+    this.stopped = false;
     this.segments = this.buildSegments();
 
-    for (let n = 0; n < COUNTDOWN_SECONDS; n++) {
-      playCountBeep(this.ctx, now + 0.15 + n);
-    }
-
-    // Bell at the very first work-phase start.
-    playBell(this.ctx, this.startTime);
-
-    // Schedule every cue up front against the audio clock. Web Audio
-    // continues to fire scheduled events even when the page is hidden and
-    // requestAnimationFrame is throttled, so the workout still beeps
-    // through a backgrounded tab.
-    for (let i = 0; i < this.segments.length; i++) {
-      this.scheduleSegmentEndCues(i);
-    }
-
+    // Kick the visual loop right away so the countdown UI updates while
+    // the workout track finishes rendering in the background.
     this.loop();
+
+    this.render(primePromise);
   }
 
-  scheduleSegmentEndCues(index) {
+  async render(primePromise) {
+    const trackSeconds = this.startTime + this.totalDuration + RENDER_TAIL_SECONDS;
+    const offlineCtx = new OfflineAudioContext({
+      numberOfChannels: 1,
+      length: Math.ceil(trackSeconds * RENDER_SAMPLE_RATE),
+      sampleRate: RENDER_SAMPLE_RATE
+    });
+
+    for (let n = 0; n < COUNTDOWN_SECONDS; n++) {
+      playCountBeep(offlineCtx, PREROLL_LEAD + n);
+    }
+
+    playBell(offlineCtx, this.startTime);
+
+    for (let i = 0; i < this.segments.length; i++) {
+      this.scheduleSegmentEndCues(offlineCtx, i);
+    }
+
+    let rendered;
+
+    try {
+      rendered = await offlineCtx.startRendering();
+    } catch {
+      return;
+    }
+
+    if (this.stopped || this.audio == null) {
+      return;
+    }
+
+    // Wait for the silent prime to actually start before swapping — this
+    // guarantees the element has entered a playing state before we hand
+    // it the workout track.
+    await primePromise;
+
+    if (this.stopped || this.audio == null) {
+      return;
+    }
+
+    const blob = encodeWav(rendered);
+    this.objectUrl = URL.createObjectURL(blob);
+    this.audio.src = this.objectUrl;
+    this.audio.load();
+    this.audio.addEventListener('ended', () => this.finish());
+
+    try {
+      await this.audio.play();
+    } catch {
+      // If playback is still refused we leave the element in place; the
+      // countdown UI keeps ticking and the user can retry with Reset.
+    }
+
+    if (this.silentUrl != null) {
+      URL.revokeObjectURL(this.silentUrl);
+      this.silentUrl = null;
+    }
+  }
+
+  scheduleSegmentEndCues(ctx, index) {
     const lead = this.workout.warning_lead_sec;
     const seg = this.segments[index];
 
-    playWarningCue(this.ctx, seg.end - lead);
+    playWarningCue(ctx, seg.end - lead);
 
     for (let second = lead; second >= 1; second--) {
-      playTickTock(this.ctx, seg.end - second, second % 2 === 0);
+      playTickTock(ctx, seg.end - second, second % 2 === 0);
     }
 
     const next = this.segments[index + 1];
 
     if (next == null) {
-      playBell(this.ctx, seg.end);
-      playBell(this.ctx, seg.end + 0.34);
+      playBell(ctx, seg.end);
+      playBell(ctx, seg.end + 0.34);
     } else if (next.kind === 'work') {
-      playBell(this.ctx, seg.end);
+      playBell(ctx, seg.end);
     } else {
-      playRestCue(this.ctx, seg.end);
+      playRestCue(ctx, seg.end);
     }
   }
 
   loop() {
     const tick = () => {
-      const elapsed = this.ctx.currentTime - this.startTime;
+      if (this.audio == null || this.stopped) {
+        return;
+      }
+
+      const elapsed = this.audio.currentTime - this.startTime;
       const total = this.totalDuration;
 
       // Pre-roll "get ready" countdown before the first phase.
       if (elapsed < 0) {
-        this.onUpdate({ phase: 'countdown', count: Math.ceil(-elapsed) });
+        const remaining = Math.max(1, Math.ceil(-elapsed));
+
+        this.onUpdate({ phase: 'countdown', count: Math.min(COUNTDOWN_SECONDS, remaining) });
         this.rafId = requestAnimationFrame(tick);
 
         return;
@@ -327,7 +467,7 @@ export class WorkoutTimer {
         return;
       }
 
-      const nowTime = this.ctx.currentTime;
+      const nowTime = this.audio.currentTime;
       let current = this.segments[this.segments.length - 1];
 
       for (let i = 0; i < this.segments.length; i++) {
@@ -352,19 +492,19 @@ export class WorkoutTimer {
   }
 
   pause() {
-    if (this.ctx != null && this.ctx.state === 'running') {
-      this.ctx.suspend();
+    if (this.audio != null && !this.audio.paused) {
+      this.audio.pause();
     }
   }
 
   resume() {
-    if (this.ctx != null && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+    if (this.audio != null && this.audio.paused && !this.finished) {
+      this.audio.play().catch(() => {});
     }
   }
 
   get paused() {
-    return this.ctx != null && this.ctx.state === 'suspended';
+    return this.audio != null && this.audio.paused;
   }
 
   finish() {
@@ -377,11 +517,24 @@ export class WorkoutTimer {
   }
 
   stop() {
+    this.stopped = true;
     cancelAnimationFrame(this.rafId);
 
-    if (this.ctx != null) {
-      this.ctx.close();
-      this.ctx = null;
+    if (this.audio != null) {
+      this.audio.pause();
+      this.audio.removeAttribute('src');
+      this.audio.load();
+      this.audio = null;
+    }
+
+    if (this.objectUrl != null) {
+      URL.revokeObjectURL(this.objectUrl);
+      this.objectUrl = null;
+    }
+
+    if (this.silentUrl != null) {
+      URL.revokeObjectURL(this.silentUrl);
+      this.silentUrl = null;
     }
   }
 }
