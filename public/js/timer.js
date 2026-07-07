@@ -329,6 +329,19 @@ export class WorkoutTimer {
   }
 
   start() {
+    // Declare a playback audio session so the OS treats the workout
+    // like intentional media playback: our cues take audio focus over
+    // background music instead of being blocked by it, and the session
+    // is allowed to keep running when the app is backgrounded. Safari
+    // 16.4+ / iOS 16.4+ only; other browsers ignore it.
+    if ('audioSession' in navigator) {
+      try {
+        navigator.audioSession.type = 'playback';
+      } catch {
+        // The property exists but the value was rejected; nothing to do.
+      }
+    }
+
     // Prime the <audio> element inside the caller's user gesture. The
     // async render below would otherwise break the activation chain on
     // iOS. Playing a one-sample silent WAV now claims the play()
@@ -351,6 +364,41 @@ export class WorkoutTimer {
     this.loop();
 
     this.render(primePromise);
+  }
+
+  installMediaSession() {
+    if (!('mediaSession' in navigator)) {
+      return;
+    }
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: this.workout.name || 'Workout',
+        artist: 'EMOM'
+      });
+      navigator.mediaSession.setActionHandler('play', () => this.resume());
+      navigator.mediaSession.setActionHandler('pause', () => this.pause());
+      navigator.mediaSession.setActionHandler('stop', () => this.pause());
+      navigator.mediaSession.playbackState = 'playing';
+    } catch {
+      // Older browsers reject some action types; not critical.
+    }
+  }
+
+  releaseMediaSession() {
+    if (!('mediaSession' in navigator)) {
+      return;
+    }
+
+    try {
+      navigator.mediaSession.playbackState = 'none';
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.setActionHandler('play', null);
+      navigator.mediaSession.setActionHandler('pause', null);
+      navigator.mediaSession.setActionHandler('stop', null);
+    } catch {
+      // Ignore.
+    }
   }
 
   async render(primePromise) {
@@ -404,6 +452,11 @@ export class WorkoutTimer {
       // If playback is still refused we leave the element in place; the
       // countdown UI keeps ticking and the user can retry with Reset.
     }
+
+    // Register with the system's MediaSession so we identify as a real
+    // media player. Without this the OS may treat our cues as ambient
+    // sound that other apps can freely preempt.
+    this.installMediaSession();
 
     if (this.silentUrl != null) {
       URL.revokeObjectURL(this.silentUrl);
@@ -495,11 +548,27 @@ export class WorkoutTimer {
     if (this.audio != null && !this.audio.paused) {
       this.audio.pause();
     }
+
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.playbackState = 'paused';
+      } catch {
+        // Ignore.
+      }
+    }
   }
 
   resume() {
     if (this.audio != null && this.audio.paused && !this.finished) {
       this.audio.play().catch(() => {});
+    }
+
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.playbackState = 'playing';
+      } catch {
+        // Ignore.
+      }
     }
   }
 
@@ -536,5 +605,7 @@ export class WorkoutTimer {
       URL.revokeObjectURL(this.silentUrl);
       this.silentUrl = null;
     }
+
+    this.releaseMediaSession();
   }
 }
