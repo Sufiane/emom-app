@@ -73,6 +73,7 @@
       <div class="type-picker" role="tablist" aria-label="Workout type">
         <button type="button" class="type-opt" data-type="emom" aria-selected="true">EMOM</button>
         <button type="button" class="type-opt" data-type="intervals">Intervals</button>
+        <button type="button" class="type-opt" data-type="random">Random HIIT</button>
       </div>
 
       <form id="workout-form">
@@ -98,12 +99,20 @@
           <label>Rest seconds<input type="number" id="w-rest" min="1" max="600" value="20"></label>
         </div>
 
-        <label>Rounds<input type="number" id="w-rounds" min="1" max="120" value="10" required></label>
-        <label>Warning lead: <span id="w-lead-out">10</span>s
+        <div class="type-fields hidden" data-for="random">
+          <label>Total minutes<input type="number" id="w-total-min" required min="1" max="60" step="0.5" value="2"></label>
+          <label>Minimum rest seconds<input type="number" id="w-min-rest" required min="5" max="120" value="15"></label>
+          <label>Shortest burst seconds<input type="number" id="w-burst-min" required min="5" max="120" value="15"></label>
+          <label>Longest burst seconds<input type="number" id="w-burst-max" required min="5" max="120" value="30"></label>
+          <p class="muted">Up to <span id="w-bursts">3</span> bursts</p>
+        </div>
+
+        <label data-except="random">Rounds<input type="number" id="w-rounds" min="1" max="120" value="10" required></label>
+        <label data-except="random">Warning lead: <span id="w-lead-out">10</span>s
           <input type="range" id="w-lead" min="3" max="15" value="10">
         </label>
 
-        <p class="muted">Total: <span id="w-total">10:00</span></p>
+        <p class="muted" data-except="random">Total: <span id="w-total">10:00</span></p>
         <p id="form-error" class="error" role="alert"></p>
         <div class="row">
           <button type="submit" id="form-submit">Save</button>

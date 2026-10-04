@@ -4,6 +4,8 @@
 // Web Audio clock is auto-suspended by mobile OSs when the tab loses
 // focus, which is what used to silence the workout entirely.
 
+import { generateBurstSchedule, segmentsFromBursts } from './random-hiit.js';
+
 // Shared output bus: a brick-wall-ish limiter so everything can be driven
 // loud and punchy without harsh clipping at the destination.
 const busNodes = new WeakMap();
@@ -182,6 +184,59 @@ function playRestCue(ctx, time) {
   }
 }
 
+const BURST_START_NOTES = [
+  { freq: 660, offset: 0, length: 0.1 },
+  { freq: 880, offset: 0.11, length: 0.1 },
+  { freq: 1320, offset: 0.22, length: 0.3 }
+];
+
+function playBurstStartCue(ctx, time) {
+  const bus = masterBus(ctx);
+
+  for (const note of BURST_START_NOTES) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const at = time + note.offset;
+
+    osc.type = 'square';
+    osc.frequency.value = note.freq;
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.5, at + 0.005);
+    gain.gain.setValueAtTime(0.5, at + note.length - 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + note.length);
+
+    osc.connect(gain).connect(bus);
+    osc.start(at);
+    osc.stop(at + note.length + 0.02);
+  }
+}
+
+const BURST_END_NOTES = [
+  { freq: 784, offset: 0 },
+  { freq: 587, offset: 0.18 },
+  { freq: 392, offset: 0.36 }
+];
+
+function playBurstEndCue(ctx, time) {
+  const bus = masterBus(ctx);
+
+  for (const note of BURST_END_NOTES) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const at = time + note.offset;
+
+    osc.type = 'sine';
+    osc.frequency.value = note.freq;
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.6, at + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.35);
+
+    osc.connect(gain).connect(bus);
+    osc.start(at);
+    osc.stop(at + 0.4);
+  }
+}
+
 // Clock "tic"/"toc" — a sharp noise click plus a short pitched body. The
 // high pitch is the "tic", the low pitch the "toc"; they alternate each
 // second during the warning window.
@@ -290,10 +345,11 @@ const PREROLL_LEAD = 0.15;
 const RENDER_TAIL_SECONDS = 3;
 
 export class WorkoutTimer {
-  constructor(workout, onUpdate, onFinish) {
+  constructor(workout, onUpdate, onFinish, random = Math.random) {
     this.workout = workout;
     this.onUpdate = onUpdate;
     this.onFinish = onFinish;
+    this.random = random;
     this.audio = null;
     this.objectUrl = null;
     this.silentUrl = null;
@@ -305,12 +361,29 @@ export class WorkoutTimer {
   }
 
   get totalDuration() {
+    if (this.workout.type === 'random') {
+      return this.workout.total_sec;
+    }
+
     const { rounds, work_sec, rest_sec } = this.workout;
 
     return rounds * (work_sec + rest_sec);
   }
 
   buildSegments() {
+    if (this.workout.type === 'random') {
+      const { total_sec, min_rest_sec, burst_min_sec, burst_max_sec } = this.workout;
+      const bursts = generateBurstSchedule({
+        totalSec: total_sec,
+        minRestSec: min_rest_sec,
+        burstMinSec: burst_min_sec,
+        burstMaxSec: burst_max_sec,
+        random: this.random
+      });
+
+      return segmentsFromBursts(bursts, total_sec, this.startTime);
+    }
+
     const { rounds, work_sec, rest_sec } = this.workout;
     const segments = [];
     let cursor = this.startTime;
@@ -413,10 +486,14 @@ export class WorkoutTimer {
       playCountBeep(offlineCtx, PREROLL_LEAD + n);
     }
 
-    playBell(offlineCtx, this.startTime);
+    if (this.workout.type === 'random') {
+      this.scheduleRandomCues(offlineCtx);
+    } else {
+      playBell(offlineCtx, this.startTime);
 
-    for (let i = 0; i < this.segments.length; i++) {
-      this.scheduleSegmentEndCues(offlineCtx, i);
+      for (let i = 0; i < this.segments.length; i++) {
+        this.scheduleSegmentEndCues(offlineCtx, i);
+      }
     }
 
     let rendered;
@@ -486,6 +563,20 @@ export class WorkoutTimer {
     }
   }
 
+  scheduleRandomCues(ctx) {
+    for (const segment of this.segments) {
+      if (segment.kind === 'work') {
+        playBurstStartCue(ctx, segment.start);
+        playBurstEndCue(ctx, segment.end);
+      }
+    }
+
+    const finish = this.segments[this.segments.length - 1].end;
+
+    playBell(ctx, finish);
+    playBell(ctx, finish + 0.34);
+  }
+
   loop() {
     const tick = () => {
       if (this.audio == null || this.stopped) {
@@ -534,7 +625,9 @@ export class WorkoutTimer {
         phase: current.kind,
         round: current.round,
         totalRounds: this.workout.rounds,
-        remainingPhase: current.end - nowTime,
+        remainingPhase: this.workout.type === 'random' && current.kind === 'rest'
+          ? null
+          : current.end - nowTime,
         remainingTotal: total - elapsed
       });
 
