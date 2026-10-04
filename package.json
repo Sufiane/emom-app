@@ -8,6 +8,7 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "test": "node --test",
     "db:local": "wrangler d1 execute emom-app --local --file=src/db/schema.sql",
     "db:remote": "wrangler d1 execute emom-app --remote --file=src/db/schema.sql"
   },

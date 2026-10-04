@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { maxBursts, validateRandomConfig } from './random-hiit.js';
 import { WorkoutTimer } from './timer.js';
 
 const byId = (id) => document.getElementById(id);
@@ -29,6 +30,10 @@ function formatClock(totalSeconds) {
 }
 
 function workoutTotalSeconds(workout) {
+  if (workout.type === 'random') {
+    return workout.total_sec;
+  }
+
   return workout.rounds * (workout.work_sec + (workout.rest_sec || 0));
 }
 
@@ -152,11 +157,53 @@ const roundsInput = byId('w-rounds');
 const leadInput = byId('w-lead');
 const workInput = byId('w-work');
 const restInput = byId('w-rest');
+const totalMinInput = byId('w-total-min');
+const minRestInput = byId('w-min-rest');
+const burstMinInput = byId('w-burst-min');
+const burstMaxInput = byId('w-burst-max');
+
+function randomConfig() {
+  return {
+    total_sec: Math.round(Number(totalMinInput.value) * 60),
+    min_rest_sec: Number(minRestInput.value),
+    burst_min_sec: Number(burstMinInput.value),
+    burst_max_sec: Number(burstMaxInput.value)
+  };
+}
+
+function randomEngineConfig(config) {
+  return {
+    totalSec: config.total_sec,
+    minRestSec: config.min_rest_sec,
+    burstMinSec: config.burst_min_sec,
+    burstMaxSec: config.burst_max_sec
+  };
+}
+
+function randomErrorMessage(code, config) {
+  if (code === 'burst_range_invalid') {
+    return 'Shortest burst must not exceed longest burst';
+  }
+
+  if (code === 'config_invalid') {
+    return 'Enter whole numbers above zero in every field';
+  }
+
+  return `Total too short: need at least ${config.burst_min_sec + 2 * config.min_rest_sec}s`;
+}
 
 const PRESETS = {
   tabata: { work: 20, rest: 10, rounds: 8, lead: 3 },
   hiit: { work: 30, rest: 15, rounds: 10, lead: 5 }
 };
+
+function setSectionActive(section, active) {
+  section.classList.toggle('hidden', !active);
+
+  for (const control of section.querySelectorAll('input, select, button')) {
+    control.disabled = !active;
+  }
+}
 
 function setType(type) {
   currentType = type;
@@ -166,8 +213,15 @@ function setType(type) {
   }
 
   for (const group of document.querySelectorAll('.type-fields')) {
-    group.classList.toggle('hidden', group.dataset.for !== type);
+    setSectionActive(group, group.dataset.for === type);
   }
+
+  for (const element of document.querySelectorAll('[data-except]')) {
+    setSectionActive(element, element.dataset.except !== type);
+  }
+
+  byId('form-submit').textContent = loggedIn && type !== 'random' ? 'Save' : 'Start';
+  byId('w-name').required = loggedIn && type !== 'random';
 
   updateFormDerived();
 }
@@ -193,6 +247,10 @@ for (const presetBtn of document.querySelectorAll('[data-preset]')) {
 }
 
 function updateFormDerived() {
+  const config = randomEngineConfig(randomConfig());
+
+  byId('w-bursts').textContent = validateRandomConfig(config) == null ? String(maxBursts(config)) : '0';
+
   byId('w-lead-out').textContent = leadInput.value;
   leadInput.setAttribute('aria-valuetext', `${leadInput.value} seconds`);
 
@@ -204,7 +262,7 @@ function updateFormDerived() {
   byId('w-total').textContent = formatClock(total);
 }
 
-for (const input of [intervalInput, roundsInput, leadInput, workInput, restInput]) {
+for (const input of [intervalInput, roundsInput, leadInput, workInput, restInput, totalMinInput, minRestInput, burstMinInput, burstMaxInput]) {
   input.addEventListener('input', updateFormDerived);
 }
 
@@ -212,11 +270,9 @@ function openForm(workout) {
   editingId = workout ? workout.id : null;
   formError.textContent = '';
   byId('form-title').textContent = loggedIn ? (workout ? 'Edit workout' : 'New workout') : 'Quick workout';
-  byId('form-submit').textContent = loggedIn ? 'Save' : 'Start';
   byId('form-cancel').classList.toggle('hidden', !loggedIn);
 
   const nameInput = byId('w-name');
-  nameInput.required = loggedIn;
   nameInput.placeholder = loggedIn ? '' : 'Workout';
   nameInput.value = workout ? workout.name : '';
 
@@ -232,6 +288,11 @@ function openForm(workout) {
   roundsInput.value = String(workout ? workout.rounds : 10);
   leadInput.value = String(workout ? workout.warning_lead_sec : 10);
 
+  totalMinInput.value = '2';
+  minRestInput.value = '15';
+  burstMinInput.value = '15';
+  burstMaxInput.value = '30';
+
   setType(type);
   showView('form');
 }
@@ -239,6 +300,21 @@ function openForm(workout) {
 workoutForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   formError.textContent = '';
+
+  if (currentType === 'random') {
+    const config = randomConfig();
+    const code = validateRandomConfig(randomEngineConfig(config));
+
+    if (code != null) {
+      formError.textContent = randomErrorMessage(code, config);
+
+      return;
+    }
+
+    openRunner({ name: byId('w-name').value.trim() || 'Workout', type: 'random', ...config });
+
+    return;
+  }
 
   const rounds = Number(roundsInput.value);
   const warningLead = Number(leadInput.value);
@@ -355,8 +431,9 @@ function phaseLabel(workout, phase, round) {
 }
 
 function runnerHeading(workout) {
-  const typeLabel = workout.type === 'intervals' ? 'Intervals' : 'EMOM';
-  const summary = `${typeLabel} · ${workout.rounds} rounds`;
+  const summary = workout.type === 'random'
+    ? `Random HIIT · ${formatClock(workout.total_sec)} · bursts ${workout.burst_min_sec}-${workout.burst_max_sec}s`
+    : `${workout.type === 'intervals' ? 'Intervals' : 'EMOM'} · ${workout.rounds} rounds`;
 
   if (!loggedIn && workout.name === 'Workout') {
     return summary;
@@ -368,8 +445,8 @@ function runnerHeading(workout) {
 async function openRunner(workout) {
   stopTimer();
   byId('run-name').textContent = runnerHeading(workout);
-  byId('run-time').textContent = formatClock(workout.work_sec);
-  byId('run-rounds').textContent = phaseLabel(workout, 'work', 1);
+  byId('run-time').textContent = formatClock(workout.type === 'random' ? workout.total_sec : workout.work_sec);
+  byId('run-rounds').textContent = workout.type === 'random' ? 'Ready' : phaseLabel(workout, 'work', 1);
   byId('run-total').textContent = `Total ${formatClock(workoutTotalSeconds(workout))}`;
   runnerSection.dataset.phase = 'work';
   runnerSection.dataset.state = 'idle';
@@ -383,6 +460,22 @@ async function openRunner(workout) {
   byId('run-rotate').classList.toggle('hidden', locked);
 }
 
+function renderRandomUpdate(state) {
+  runnerSection.dataset.phase = state.phase;
+
+  if (state.phase === 'rest') {
+    byId('run-time').textContent = formatClock(state.remainingTotal);
+    byId('run-rounds').textContent = 'REST';
+    byId('run-total').textContent = '';
+
+    return;
+  }
+
+  byId('run-time').textContent = formatClock(state.remainingPhase);
+  byId('run-rounds').textContent = `GO · Burst ${state.round}`;
+  byId('run-total').textContent = `Total remaining ${formatClock(state.remainingTotal)}`;
+}
+
 function onRunUpdate(state) {
   if (state.phase === 'countdown') {
     byId('run-time').textContent = String(state.count);
@@ -394,6 +487,12 @@ function onRunUpdate(state) {
   }
 
   const workout = JSON.parse(startBtn.dataset.workout);
+
+  if (workout.type === 'random') {
+    renderRandomUpdate(state);
+
+    return;
+  }
 
   byId('run-time').textContent = formatClock(state.remainingPhase);
   byId('run-rounds').textContent = phaseLabel(workout, state.phase, state.round);
