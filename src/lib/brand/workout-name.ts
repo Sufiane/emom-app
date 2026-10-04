@@ -1,4 +1,4 @@
-import { HTTPException } from 'hono/http-exception';
+import { badRequest } from '../bad-request';
 import type { Brand } from '../brand';
 
 export type WorkoutName = Brand<string, 'WorkoutName'>;
@@ -9,11 +9,11 @@ export function makeWorkoutName(value: unknown): WorkoutName {
   const trimmed = typeof value === 'string' ? value.trim() : '';
 
   if (trimmed.length === 0) {
-    throw new HTTPException(400, { message: 'name is required' });
+    throw badRequest('name_required');
   }
 
   if (trimmed.length > WORKOUT_NAME_MAX) {
-    throw new HTTPException(400, { message: `name must be at most ${WORKOUT_NAME_MAX} characters` });
+    throw badRequest('name_too_long');
   }
 
   return trimmed as WorkoutName;

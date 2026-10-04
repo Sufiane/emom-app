@@ -8,7 +8,7 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node --test",
+    "test": "node --import tsx --test \"test/**/*.test.*\"",
     "db:local": "wrangler d1 execute emom-app --local --file=src/db/schema.sql",
     "db:remote": "wrangler d1 execute emom-app --remote --file=src/db/schema.sql"
   },
@@ -20,6 +20,7 @@
     "@typescript-eslint/eslint-plugin": "8.60.0",
     "@typescript-eslint/parser": "8.60.0",
     "eslint": "10.4.0",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "wrangler": "4.95.0"
   }

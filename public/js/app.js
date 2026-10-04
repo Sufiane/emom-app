@@ -29,6 +29,8 @@ function formatClock(totalSeconds) {
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
+const TYPE_LABELS = { emom: 'EMOM', intervals: 'Intervals', random: 'Random HIIT' };
+
 function workoutTotalSeconds(workout) {
   if (workout.type === 'random') {
     return workout.total_sec;
@@ -52,7 +54,7 @@ async function handleAuth(action) {
     await action(email, password);
     await enterApp();
   } catch (error) {
-    authError.textContent = error.message;
+    authError.textContent = errorMessage(error.message);
   }
 }
 
@@ -92,10 +94,16 @@ async function renderList() {
 
 function workoutItem(workout) {
   const total = workoutTotalSeconds(workout);
-  const summary = workout.type === 'intervals'
-    ? `${workout.rounds} × (${workout.work_sec}s / ${workout.rest_sec}s) · ${formatClock(total)}`
-    : `${workout.rounds} × ${workout.work_sec}s · ${formatClock(total)}`;
-  const typeLabel = workout.type === 'intervals' ? 'Intervals' : 'EMOM';
+  const typeLabel = TYPE_LABELS[workout.type] ?? 'EMOM';
+  let summary;
+
+  if (workout.type === 'random') {
+    summary = `${formatClock(total)} · bursts ${workout.burst_min_sec}-${workout.burst_max_sec}s · rest ≥ ${workout.min_rest_sec}s`;
+  } else if (workout.type === 'intervals') {
+    summary = `${workout.rounds} × (${workout.work_sec}s / ${workout.rest_sec}s) · ${formatClock(total)}`;
+  } else {
+    summary = `${workout.rounds} × ${workout.work_sec}s · ${formatClock(total)}`;
+  }
 
   const item = document.createElement('li');
   const info = document.createElement('div');
@@ -180,16 +188,47 @@ function randomEngineConfig(config) {
   };
 }
 
+const ERROR_MESSAGES = {
+  name_required: 'Enter a workout name',
+  name_too_long: 'Workout name is too long',
+  type_invalid: 'Choose a valid workout type',
+  rounds_not_integer: 'Rounds must be a whole number',
+  rounds_out_of_range: 'Rounds must be between 1 and 120',
+  warning_lead_sec_not_integer: 'Warning lead must be a whole number of seconds',
+  warning_lead_sec_out_of_range: 'Warning lead must be between 3 and 15 seconds',
+  work_sec_not_integer: 'Work time must be a whole number of seconds',
+  work_sec_interval_not_allowed: 'EMOM interval must be 30, 60, 90 or 120 seconds',
+  work_sec_out_of_range: 'Work time must be between 5 and 600 seconds',
+  rest_sec_not_integer: 'Rest time must be a whole number of seconds',
+  rest_sec_out_of_range: 'Rest time must be between 1 and 600 seconds',
+  rest_sec_must_be_zero: 'Rest must be zero for this workout type',
+  warning_lead_too_long: 'Warning lead must be shorter than both work and rest',
+  total_sec_not_integer: 'Total time must be a whole number',
+  total_sec_out_of_range: 'Total time must be between 1 and 60 minutes',
+  min_rest_sec_not_integer: 'Minimum rest must be a whole number of seconds',
+  min_rest_sec_out_of_range: 'Minimum rest must be between 5 and 120 seconds',
+  burst_min_sec_not_integer: 'Shortest burst must be a whole number of seconds',
+  burst_min_sec_out_of_range: 'Shortest burst must be between 5 and 120 seconds',
+  burst_max_sec_not_integer: 'Longest burst must be a whole number of seconds',
+  burst_max_sec_out_of_range: 'Longest burst must be between 5 and 120 seconds',
+  burst_min_exceeds_max: 'Shortest burst must not exceed longest burst',
+  burst_range_invalid: 'Shortest burst must not exceed longest burst',
+  config_invalid: 'Enter whole numbers above zero in every field',
+  workout_id_invalid: 'Invalid workout',
+  workout_not_found: 'Workout not found',
+  email_invalid: 'Enter a valid email address'
+};
+
+function errorMessage(code) {
+  return ERROR_MESSAGES[code] ?? code;
+}
+
 function randomErrorMessage(code, config) {
-  if (code === 'burst_range_invalid') {
-    return 'Shortest burst must not exceed longest burst';
+  if (code === 'total_sec_too_short') {
+    return `Total too short: need at least ${config.burst_min_sec + 2 * config.min_rest_sec}s`;
   }
 
-  if (code === 'config_invalid') {
-    return 'Enter whole numbers above zero in every field';
-  }
-
-  return `Total too short: need at least ${config.burst_min_sec + 2 * config.min_rest_sec}s`;
+  return errorMessage(code);
 }
 
 const PRESETS = {
@@ -220,8 +259,8 @@ function setType(type) {
     setSectionActive(element, element.dataset.except !== type);
   }
 
-  byId('form-submit').textContent = loggedIn && type !== 'random' ? 'Save' : 'Start';
-  byId('w-name').required = loggedIn && type !== 'random';
+  byId('form-submit').textContent = loggedIn ? 'Save' : 'Start';
+  byId('w-name').required = loggedIn;
 
   updateFormDerived();
 }
@@ -278,20 +317,24 @@ function openForm(workout) {
 
   const type = workout ? workout.type : 'emom';
 
+  const timed = workout != null && type !== 'random';
+
   if (type === 'intervals') {
-    workInput.value = String(workout ? workout.work_sec : 40);
-    restInput.value = String(workout ? workout.rest_sec : 20);
+    workInput.value = String(timed ? workout.work_sec : 40);
+    restInput.value = String(timed ? workout.rest_sec : 20);
   } else {
-    intervalInput.value = String(workout ? workout.work_sec : 60);
+    intervalInput.value = String(timed ? workout.work_sec : 60);
   }
 
-  roundsInput.value = String(workout ? workout.rounds : 10);
-  leadInput.value = String(workout ? workout.warning_lead_sec : 10);
+  roundsInput.value = String(timed ? workout.rounds : 10);
+  leadInput.value = String(timed ? workout.warning_lead_sec : 10);
 
-  totalMinInput.value = '2';
-  minRestInput.value = '15';
-  burstMinInput.value = '15';
-  burstMaxInput.value = '30';
+  const saved = workout != null && type === 'random';
+
+  totalMinInput.value = String(saved ? workout.total_sec / 60 : 2);
+  minRestInput.value = String(saved ? workout.min_rest_sec : 15);
+  burstMinInput.value = String(saved ? workout.burst_min_sec : 15);
+  burstMaxInput.value = String(saved ? workout.burst_max_sec : 30);
 
   setType(type);
   showView('form');
@@ -311,7 +354,15 @@ workoutForm.addEventListener('submit', async (event) => {
       return;
     }
 
-    openRunner({ name: byId('w-name').value.trim() || 'Workout', type: 'random', ...config });
+    const randomName = byId('w-name').value.trim();
+
+    if (!loggedIn) {
+      openRunner({ name: randomName || 'Workout', type: 'random', ...config });
+
+      return;
+    }
+
+    await saveWorkout({ name: randomName, type: 'random', ...config });
 
     return;
   }
@@ -347,6 +398,10 @@ workoutForm.addEventListener('submit', async (event) => {
     return;
   }
 
+  await saveWorkout(payload);
+});
+
+async function saveWorkout(payload) {
   try {
     if (editingId) {
       await api.updateWorkout(editingId, payload);
@@ -357,9 +412,9 @@ workoutForm.addEventListener('submit', async (event) => {
     await renderList();
     showView('list');
   } catch (error) {
-    formError.textContent = error.message;
+    formError.textContent = errorMessage(error.message);
   }
-});
+}
 
 byId('form-cancel').addEventListener('click', () => showView('list'));
 
@@ -433,7 +488,7 @@ function phaseLabel(workout, phase, round) {
 function runnerHeading(workout) {
   const summary = workout.type === 'random'
     ? `Random HIIT · ${formatClock(workout.total_sec)} · bursts ${workout.burst_min_sec}-${workout.burst_max_sec}s`
-    : `${workout.type === 'intervals' ? 'Intervals' : 'EMOM'} · ${workout.rounds} rounds`;
+    : `${TYPE_LABELS[workout.type] ?? 'EMOM'} · ${workout.rounds} rounds`;
 
   if (!loggedIn && workout.name === 'Workout') {
     return summary;

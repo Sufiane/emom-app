@@ -1,4 +1,4 @@
-const CACHE = 'emom-shell-v6';
+const CACHE = 'emom-shell-v7';
 const SHELL = [
   '/',
   '/index.html',
