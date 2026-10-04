@@ -1,4 +1,4 @@
-import { HTTPException } from 'hono/http-exception';
+import { badRequest } from '../bad-request';
 import type { Brand } from '../brand';
 
 export type WorkPhaseSec = Brand<number, 'WorkPhaseSec'>;
@@ -8,11 +8,11 @@ const PHASE_MAX = 600;
 
 export function makeWorkPhaseSec(value: unknown): WorkPhaseSec {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
-    throw new HTTPException(400, { message: 'work_sec must be an integer' });
+    throw badRequest('work_sec_not_integer');
   }
 
   if (value < PHASE_MIN || value > PHASE_MAX) {
-    throw new HTTPException(400, { message: `work_sec must be between ${PHASE_MIN} and ${PHASE_MAX}` });
+    throw badRequest('work_sec_out_of_range');
   }
 
   return value as WorkPhaseSec;

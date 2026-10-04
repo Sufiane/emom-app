@@ -1,4 +1,4 @@
-import { HTTPException } from 'hono/http-exception';
+import { badRequest } from '../bad-request';
 import type { Brand } from '../brand';
 
 export type Rounds = Brand<number, 'Rounds'>;
@@ -8,11 +8,11 @@ const ROUNDS_MAX = 120;
 
 export function makeRounds(value: unknown): Rounds {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
-    throw new HTTPException(400, { message: 'rounds must be an integer' });
+    throw badRequest('rounds_not_integer');
   }
 
   if (value < ROUNDS_MIN || value > ROUNDS_MAX) {
-    throw new HTTPException(400, { message: `rounds must be between ${ROUNDS_MIN} and ${ROUNDS_MAX}` });
+    throw badRequest('rounds_out_of_range');
   }
 
   return value as Rounds;
