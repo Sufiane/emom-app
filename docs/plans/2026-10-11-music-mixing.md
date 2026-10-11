@@ -2,11 +2,9 @@
 
 Spec: `docs/specs/2026-10-11-music-mixing-design.md`. All work is frontend (`public/`). No backend. Commits use conventional-commit subjects.
 
-## Phase 0 - device verification (no code, gates everything)
+## Phase 0 - device verification (post-build, user)
 
-- [ ] On real iPhone and Android phone, temporarily set `audioSession.type = 'ambient'` (iOS) via a throwaway local build or Safari console on the deployed page. Record per case: music keeps playing? cues audible over music? cues survive screen lock? survive app background?
-- [ ] Android: with the current `<audio>` path, does Spotify / YouTube Music pause or duck on Start? Record.
-- [ ] Decide from results: default ON or OFF; whether Phase 4 (Android fallback) is needed. Report to coordinator before Phase 2 if iOS ambient drops cues on lock.
+User is on Android, keeps the app in the foreground. No pre-build gate: AudioContext requests no audio focus, so build it directly and verify on device after. Check: Spotify/YouTube keep playing on Start, cues audible over music, pause/resume works.
 
 ## Phase 1 - preference module
 
@@ -29,9 +27,9 @@ Spec: `docs/specs/2026-10-11-music-mixing-design.md`. All work is frontend (`pub
 5. [ ] Manual device matrix from the spec (hand to user or `qa-verifier`).
    Commit: `feat(runner): add play-over-music toggle`
 
-## Phase 4 - Android fallback (only if Phase 0 shows Chrome pauses music)
+## Phase 4 - Android AudioContext path (REQUIRED, user is on Android, foreground use)
 
-Re-plan after Phase 0; scope is rendering via `AudioBufferSourceNode` on a live `AudioContext` in mix mode and switching the `loop()` clock to the context time, with pause/resume via `ctx.suspend/resume`. Needs its own tests and a lock/background check. Skip if unnecessary.
+Do after Phase 2, before UI. In mix mode, play the pre-rendered buffer via `AudioBufferSourceNode` on a live `AudioContext` instead of the `<audio>` element (no audio-focus request). Drive `loop()` clock from `ctx.currentTime`; pause/resume via `ctx.suspend/resume`; resume ctx inside the Start user gesture. Keep the `<audio>` path for mix OFF. Tests: fake AudioContext, assert no `<audio>` play in mix mode, clock advances, pause/resume. Foreground use is the supported case; wake lock stays.
 
 ## Independence
 

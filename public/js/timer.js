@@ -1,9 +1,10 @@
 // EMOM timer engine. The workout's cue timeline is rendered up front
-// into a single audio track and played through an <audio> element so
-// bells and ticks keep firing even when the app is backgrounded — the
-// Web Audio clock is auto-suspended by mobile OSs when the tab loses
-// focus, which is what used to silence the workout entirely.
+// into a single audio track (see playback.js for how it is played). With
+// mixing off it plays through an <audio> element so cues keep firing when
+// backgrounded; with mixing on it plays on a live AudioContext so the
+// user's music app is not interrupted.
 
+import { createPlayback } from './playback.js';
 import { generateBurstSchedule, segmentsFromBursts } from './random-hiit.js';
 
 // Shared output bus: a brick-wall-ish limiter so everything can be driven
@@ -271,88 +272,19 @@ function playTickTock(ctx, time, high) {
   osc.stop(time + 0.06);
 }
 
-// One-sample silent WAV. Playing this on the <audio> element inside the
-// Start click captures user activation for that element, so the later
-// swap to the rendered workout track (after an await for rendering) is
-// allowed to auto-play on iOS.
-function silentWavUrl() {
-  const bytes = new Uint8Array([
-    0x52, 0x49, 0x46, 0x46, 0x26, 0x00, 0x00, 0x00,
-    0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74, 0x20,
-    0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
-    0x44, 0xac, 0x00, 0x00, 0x88, 0x58, 0x01, 0x00,
-    0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61,
-    0x02, 0x00, 0x00, 0x00, 0x00, 0x00
-  ]);
-
-  return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
-}
-
-// Encode a rendered AudioBuffer to a 16-bit PCM WAV Blob so it can be
-// played through an HTMLAudioElement.
-function encodeWav(audioBuffer) {
-  const numChannels = audioBuffer.numberOfChannels;
-  const sampleRate = audioBuffer.sampleRate;
-  const blockAlign = numChannels * 2;
-  const dataSize = audioBuffer.length * blockAlign;
-  const fileSize = 44 + dataSize;
-
-  const out = new ArrayBuffer(fileSize);
-  const view = new DataView(out);
-
-  const writeString = (offset, text) => {
-    for (let i = 0; i < text.length; i++) {
-      view.setUint8(offset + i, text.charCodeAt(i));
-    }
-  };
-
-  writeString(0, 'RIFF');
-  view.setUint32(4, fileSize - 8, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * blockAlign, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true);
-  writeString(36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  const channels = [];
-
-  for (let c = 0; c < numChannels; c++) {
-    channels.push(audioBuffer.getChannelData(c));
-  }
-
-  let offset = 44;
-
-  for (let i = 0; i < audioBuffer.length; i++) {
-    for (let c = 0; c < numChannels; c++) {
-      const sample = Math.max(-1, Math.min(1, channels[c][i]));
-      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-      offset += 2;
-    }
-  }
-
-  return new Blob([out], { type: 'audio/wav' });
-}
-
 const RENDER_SAMPLE_RATE = 22050;
 const COUNTDOWN_SECONDS = 3;
 const PREROLL_LEAD = 0.15;
 const RENDER_TAIL_SECONDS = 3;
 
 export class WorkoutTimer {
-  constructor(workout, onUpdate, onFinish, random = Math.random) {
+  constructor(workout, onUpdate, onFinish, random = Math.random, mixWithMusic = true) {
     this.workout = workout;
+    this.mixing = mixWithMusic;
     this.onUpdate = onUpdate;
     this.onFinish = onFinish;
     this.random = random;
-    this.audio = null;
-    this.objectUrl = null;
-    this.silentUrl = null;
+    this.playback = null;
     this.startTime = 0;
     this.rafId = 0;
     this.finished = false;
@@ -402,30 +334,20 @@ export class WorkoutTimer {
   }
 
   start() {
-    // Declare a playback audio session so the OS treats the workout
-    // like intentional media playback: our cues take audio focus over
-    // background music instead of being blocked by it, and the session
-    // is allowed to keep running when the app is backgrounded. Safari
+    this.playback = createPlayback(this.mixing);
+    this.mixing = this.playback.mixes;
+    this.playback.prime();
+
+    // Ambient mixes with other apps' audio; playback claims audio focus so
+    // cues survive backgrounding but interrupt the user's music. Safari
     // 16.4+ / iOS 16.4+ only; other browsers ignore it.
     if ('audioSession' in navigator) {
       try {
-        navigator.audioSession.type = 'playback';
+        navigator.audioSession.type = this.mixing ? 'ambient' : 'playback';
       } catch {
         // The property exists but the value was rejected; nothing to do.
       }
     }
-
-    // Prime the <audio> element inside the caller's user gesture. The
-    // async render below would otherwise break the activation chain on
-    // iOS. Playing a one-sample silent WAV now claims the play()
-    // capability for this specific element so subsequent src swaps and
-    // play() calls are permitted without a fresh gesture.
-    this.silentUrl = silentWavUrl();
-    this.audio = new Audio();
-    this.audio.preload = 'auto';
-    this.audio.playsInline = true;
-    this.audio.src = this.silentUrl;
-    const primePromise = this.audio.play().catch(() => {});
 
     this.startTime = COUNTDOWN_SECONDS + PREROLL_LEAD;
     this.finished = false;
@@ -436,11 +358,11 @@ export class WorkoutTimer {
     // the workout track finishes rendering in the background.
     this.loop();
 
-    this.render(primePromise);
+    this.render(this.playback);
   }
 
   installMediaSession() {
-    if (!('mediaSession' in navigator)) {
+    if (this.mixing || !('mediaSession' in navigator)) {
       return;
     }
 
@@ -459,7 +381,7 @@ export class WorkoutTimer {
   }
 
   releaseMediaSession() {
-    if (!('mediaSession' in navigator)) {
+    if (this.mixing || !('mediaSession' in navigator)) {
       return;
     }
 
@@ -474,7 +396,7 @@ export class WorkoutTimer {
     }
   }
 
-  async render(primePromise) {
+  async render(playback) {
     const trackSeconds = this.startTime + this.totalDuration + RENDER_TAIL_SECONDS;
     const offlineCtx = new OfflineAudioContext({
       numberOfChannels: 1,
@@ -504,40 +426,16 @@ export class WorkoutTimer {
       return;
     }
 
-    if (this.stopped || this.audio == null) {
+    if (this.stopped) {
       return;
     }
 
-    // Wait for the silent prime to actually start before swapping — this
-    // guarantees the element has entered a playing state before we hand
-    // it the workout track.
-    await primePromise;
+    const started = await playback.begin(rendered, () => this.finish());
 
-    if (this.stopped || this.audio == null) {
-      return;
-    }
-
-    const blob = encodeWav(rendered);
-    this.objectUrl = URL.createObjectURL(blob);
-    this.audio.src = this.objectUrl;
-    this.audio.load();
-    this.audio.addEventListener('ended', () => this.finish());
-
-    try {
-      await this.audio.play();
-    } catch {
-      // If playback is still refused we leave the element in place; the
-      // countdown UI keeps ticking and the user can retry with Reset.
-    }
-
-    // Register with the system's MediaSession so we identify as a real
-    // media player. Without this the OS may treat our cues as ambient
-    // sound that other apps can freely preempt.
-    this.installMediaSession();
-
-    if (this.silentUrl != null) {
-      URL.revokeObjectURL(this.silentUrl);
-      this.silentUrl = null;
+    // Register as a media player so the OS does not treat our cues as
+    // ambient sound that other apps can preempt. Skipped when mixing.
+    if (started && !this.stopped) {
+      this.installMediaSession();
     }
   }
 
@@ -579,11 +477,11 @@ export class WorkoutTimer {
 
   loop() {
     const tick = () => {
-      if (this.audio == null || this.stopped) {
+      if (this.playback == null || this.stopped) {
         return;
       }
 
-      const elapsed = this.audio.currentTime - this.startTime;
+      const elapsed = this.playback.position - this.startTime;
       const total = this.totalDuration;
 
       // Pre-roll "get ready" countdown before the first phase.
@@ -611,7 +509,7 @@ export class WorkoutTimer {
         return;
       }
 
-      const nowTime = this.audio.currentTime;
+      const nowTime = this.playback.position;
       let current = this.segments[this.segments.length - 1];
 
       for (let i = 0; i < this.segments.length; i++) {
@@ -638,35 +536,35 @@ export class WorkoutTimer {
   }
 
   pause() {
-    if (this.audio != null && !this.audio.paused) {
-      this.audio.pause();
+    if (this.playback != null) {
+      this.playback.pause();
     }
 
-    if ('mediaSession' in navigator) {
-      try {
-        navigator.mediaSession.playbackState = 'paused';
-      } catch {
-        // Ignore.
-      }
-    }
+    this.setPlaybackState('paused');
   }
 
   resume() {
-    if (this.audio != null && this.audio.paused && !this.finished) {
-      this.audio.play().catch(() => {});
+    if (this.playback != null && !this.finished) {
+      this.playback.resume();
     }
 
-    if ('mediaSession' in navigator) {
-      try {
-        navigator.mediaSession.playbackState = 'playing';
-      } catch {
-        // Ignore.
-      }
+    this.setPlaybackState('playing');
+  }
+
+  setPlaybackState(state) {
+    if (this.mixing || !('mediaSession' in navigator)) {
+      return;
+    }
+
+    try {
+      navigator.mediaSession.playbackState = state;
+    } catch {
+      // Ignore.
     }
   }
 
   get paused() {
-    return this.audio != null && this.audio.paused;
+    return this.playback != null && this.playback.paused;
   }
 
   finish() {
@@ -682,21 +580,9 @@ export class WorkoutTimer {
     this.stopped = true;
     cancelAnimationFrame(this.rafId);
 
-    if (this.audio != null) {
-      this.audio.pause();
-      this.audio.removeAttribute('src');
-      this.audio.load();
-      this.audio = null;
-    }
-
-    if (this.objectUrl != null) {
-      URL.revokeObjectURL(this.objectUrl);
-      this.objectUrl = null;
-    }
-
-    if (this.silentUrl != null) {
-      URL.revokeObjectURL(this.silentUrl);
-      this.silentUrl = null;
+    if (this.playback != null) {
+      this.playback.stop();
+      this.playback = null;
     }
 
     this.releaseMediaSession();
