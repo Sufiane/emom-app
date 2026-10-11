@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { getMixWithMusic, isIos, setMixWithMusic } from './audio-prefs.js';
 import { maxBursts, validateRandomConfig } from './random-hiit.js';
 import { WorkoutTimer } from './timer.js';
 
@@ -424,6 +425,20 @@ let timer = null;
 const startBtn = byId('run-start');
 const runnerSection = byId('view-runner');
 
+const mixToggle = byId('run-mix');
+const mixHint = byId('run-mix-hint');
+
+function syncMixHint() {
+  mixHint.hidden = !(mixToggle.checked && isIos());
+}
+
+mixToggle.checked = getMixWithMusic();
+syncMixHint();
+mixToggle.addEventListener('change', () => {
+  setMixWithMusic(mixToggle.checked);
+  syncMixHint();
+});
+
 let wakeLock = null;
 
 async function acquireWakeLock() {
@@ -581,7 +596,7 @@ startBtn.addEventListener('click', () => {
 
   if (state === 'idle' || state === 'done') {
     const workout = JSON.parse(startBtn.dataset.workout);
-    timer = new WorkoutTimer(workout, onRunUpdate, onRunFinish);
+    timer = new WorkoutTimer(workout, onRunUpdate, onRunFinish, Math.random, mixToggle.checked);
     timer.start();
     acquireWakeLock();
     runnerSection.dataset.state = 'running';

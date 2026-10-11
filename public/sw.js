@@ -1,4 +1,4 @@
-const CACHE = 'emom-shell-v7';
+const CACHE = 'emom-shell-v8';
 const SHELL = [
   '/',
   '/index.html',
@@ -6,6 +6,8 @@ const SHELL = [
   '/js/app.js',
   '/js/api.js',
   '/js/timer.js',
+  '/js/playback.js',
+  '/js/audio-prefs.js',
   '/js/random-hiit.js',
   '/manifest.webmanifest',
   '/icons/icon.svg'
