@@ -104,7 +104,14 @@ class FakeAudioContext {
   }
 
   createBufferSource() {
-    const source = { connect: () => {}, start: () => this.log.push('source.start'), stop: () => this.log.push('source.stop') };
+    const source = {
+      connect: () => {},
+      start: (when) => {
+        source.when = when;
+        this.log.push('source.start');
+      },
+      stop: () => this.log.push('source.stop')
+    };
     this.sources.push(source);
 
     return source;
@@ -313,7 +320,7 @@ describe('WorkoutTimer context clock', () => {
   async function startTimer() {
     const timer = new WorkoutTimer(WORKOUT, (state) => updates.push(state), () => {}, Math.random, true);
     timer.start();
-    await new Promise((resolve) => setImmediate(resolve));
+    await timer.rendering;
 
     return timer;
   }
@@ -326,9 +333,15 @@ describe('WorkoutTimer context clock', () => {
   }
 
   describe('after the track starts', () => {
-    it('starts the buffer source once', async () => {
+    it('starts one buffer source per chunk', async () => {
       const timer = await startTimer();
-      assert.equal(live.log.filter((entry) => entry === 'source.start').length, 1);
+      assert.equal(live.log.filter((entry) => entry === 'source.start').length, timer.chunkWindows().length);
+      timer.stop();
+    });
+
+    it('schedules each chunk at its window start', async () => {
+      const timer = await startTimer();
+      assert.deepEqual(live.sources.map((source) => source.when), timer.chunkWindows().map((span) => span.from));
       timer.stop();
     });
 
@@ -339,6 +352,30 @@ describe('WorkoutTimer context clock', () => {
       assert.equal(update.phase, 'work');
       assert.ok(update.remainingPhase < 40 && update.remainingPhase > 30);
       timer.stop();
+    });
+  });
+
+  describe('when a background chunk fails to render', () => {
+    it('finishes the workout once', async () => {
+      let finished = 0;
+      const timer = new WorkoutTimer(WORKOUT, () => {}, () => {
+        finished += 1;
+      }, Math.random, true);
+      timer.renderChunk = (from) => (from === 0 ? Promise.resolve({ length: 10 }) : Promise.reject(new Error('render')));
+      timer.start();
+      await timer.rendering;
+      assert.equal(finished, 1);
+      timer.stop();
+    });
+
+    it('stops the partial track', async () => {
+      const timer = new WorkoutTimer(WORKOUT, () => {}, () => {}, Math.random, true);
+      timer.renderChunk = (from) => (from === 0 ? Promise.resolve({ length: 10 }) : Promise.reject(new Error('render')));
+      timer.start();
+      await timer.rendering;
+      assert.ok(live.log.includes('source.stop'));
+      assert.ok(live.log.includes('close'));
+      assert.equal(timer.playback, null);
     });
   });
 
@@ -404,6 +441,38 @@ describe('WorkoutTimer context clock', () => {
       timer.stop();
       assert.ok(live.log.includes('source.stop'));
       assert.ok(live.log.includes('close'));
+    });
+
+    it('stops every scheduled source', async () => {
+      const timer = await startTimer();
+      const count = live.sources.length;
+      timer.stop();
+      assert.equal(live.log.filter((entry) => entry === 'source.stop').length, count);
+    });
+  });
+
+  describe('when stopped during background rendering', () => {
+    it('schedules no further chunks', async () => {
+      const timer = new WorkoutTimer(WORKOUT, () => {}, () => {}, Math.random, true);
+      timer.start();
+      await new Promise((resolve) => setImmediate(resolve));
+      timer.stop();
+      await timer.rendering;
+      assert.ok(live.sources.length < timer.chunkWindows().length);
+    });
+  });
+
+  describe('when chunks are scheduled while paused', () => {
+    it('keeps scheduled sources without re-scheduling', async () => {
+      const timer = new WorkoutTimer(WORKOUT, () => {}, () => {}, Math.random, true);
+      timer.start();
+      await new Promise((resolve) => setImmediate(resolve));
+      const scheduled = live.sources.length;
+      timer.pause();
+      timer.resume();
+      assert.equal(live.sources.length, scheduled);
+      assert.equal(live.log.filter((entry) => entry === 'source.stop').length, 0);
+      timer.stop();
     });
   });
 });
