@@ -1,5 +1,6 @@
-// EMOM timer engine. The workout's cue timeline is rendered up front
-// into a single audio track (see playback.js for how it is played). With
+// EMOM timer engine. The workout's cue timeline is rendered in short
+// chunks, the first of which starts playing immediately (see playback.js
+// for how chunks are played). With
 // mixing off it plays through an <audio> element so cues keep firing when
 // backgrounded; with mixing on it plays on a live AudioContext so the
 // user's music app is not interrupted.
@@ -276,6 +277,37 @@ const RENDER_SAMPLE_RATE = 22050;
 const COUNTDOWN_SECONDS = 3;
 const PREROLL_LEAD = 0.15;
 const RENDER_TAIL_SECONDS = 3;
+const HEAD_SECONDS = 10;
+const CHUNK_SECONDS = 60;
+const FINAL_BELL_GAP = 0.34;
+
+const CUE_PLAYERS = {
+  countBeep: (ctx, time) => playCountBeep(ctx, time),
+  bell: (ctx, time) => playBell(ctx, time),
+  warning: (ctx, time) => playWarningCue(ctx, time),
+  tickTock: (ctx, time, high) => playTickTock(ctx, time, high),
+  restCue: (ctx, time) => playRestCue(ctx, time),
+  burstStart: (ctx, time) => playBurstStartCue(ctx, time),
+  burstEnd: (ctx, time) => playBurstEndCue(ctx, time)
+};
+
+// MessageChannel is not subject to the timer throttling that background
+// tabs apply to setTimeout, so chunk rendering keeps pace with playback.
+function yieldToEventLoop() {
+  if (typeof MessageChannel === 'undefined') {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(0);
+  });
+}
 
 export class WorkoutTimer {
   constructor(workout, onUpdate, onFinish, random = Math.random, mixWithMusic = true) {
@@ -290,6 +322,12 @@ export class WorkoutTimer {
     this.finished = false;
     this.stopped = false;
     this.segments = [];
+    this.cues = [];
+    this.rendering = null;
+  }
+
+  get trackEnd() {
+    return this.startTime + this.totalDuration;
   }
 
   get totalDuration() {
@@ -349,16 +387,21 @@ export class WorkoutTimer {
       }
     }
 
-    this.startTime = COUNTDOWN_SECONDS + PREROLL_LEAD;
     this.finished = false;
     this.stopped = false;
-    this.segments = this.buildSegments();
+    this.prepareSchedule();
 
     // Kick the visual loop right away so the countdown UI updates while
     // the workout track finishes rendering in the background.
     this.loop();
 
-    this.render(this.playback);
+    this.rendering = this.render(this.playback);
+  }
+
+  prepareSchedule() {
+    this.startTime = COUNTDOWN_SECONDS + PREROLL_LEAD;
+    this.segments = this.buildSegments();
+    this.cues = this.buildCues();
   }
 
   installMediaSession() {
@@ -397,32 +440,13 @@ export class WorkoutTimer {
   }
 
   async render(playback) {
-    const trackSeconds = this.startTime + this.totalDuration + RENDER_TAIL_SECONDS;
-    const offlineCtx = new OfflineAudioContext({
-      numberOfChannels: 1,
-      length: Math.ceil(trackSeconds * RENDER_SAMPLE_RATE),
-      sampleRate: RENDER_SAMPLE_RATE
-    });
+    const windows = this.chunkWindows();
+    const trackSeconds = this.trackEnd + RENDER_TAIL_SECONDS;
+    const head = await this.renderWindow(windows[0]);
 
-    for (let n = 0; n < COUNTDOWN_SECONDS; n++) {
-      playCountBeep(offlineCtx, PREROLL_LEAD + n);
-    }
+    if (head == null) {
+      this.abandon();
 
-    if (this.workout.type === 'random') {
-      this.scheduleRandomCues(offlineCtx);
-    } else {
-      playBell(offlineCtx, this.startTime);
-
-      for (let i = 0; i < this.segments.length; i++) {
-        this.scheduleSegmentEndCues(offlineCtx, i);
-      }
-    }
-
-    let rendered;
-
-    try {
-      rendered = await offlineCtx.startRendering();
-    } catch {
       return;
     }
 
@@ -430,49 +454,155 @@ export class WorkoutTimer {
       return;
     }
 
-    const started = await playback.begin(rendered, () => this.finish());
+    const started = await playback.begin(head, () => this.finish(), {
+      isLast: windows.length === 1,
+      trackSeconds,
+      tailSeconds: RENDER_TAIL_SECONDS
+    });
+
+    if (!started || this.stopped) {
+      return;
+    }
 
     // Register as a media player so the OS does not treat our cues as
     // ambient sound that other apps can preempt. Skipped when mixing.
-    if (started && !this.stopped) {
-      this.installMediaSession();
+    this.installMediaSession();
+
+    for (let i = 1; i < windows.length; i++) {
+      await yieldToEventLoop();
+
+      if (this.stopped) {
+        return;
+      }
+
+      const buffer = await this.renderWindow(windows[i]);
+
+      if (buffer == null) {
+        this.abandon();
+
+        return;
+      }
+
+      if (this.stopped) {
+        return;
+      }
+
+      const added = await playback.addChunk(buffer, windows[i].from, i === windows.length - 1);
+
+      if (!added) {
+        this.abandon();
+
+        return;
+      }
     }
   }
 
-  scheduleSegmentEndCues(ctx, index) {
+  // A track that can no longer be completed would leave the timer frozen
+  // with missing cues, so end the workout instead.
+  abandon() {
+    if (!this.stopped) {
+      this.finish();
+      this.stop();
+    }
+  }
+
+  async renderWindow(span) {
+    try {
+      return await this.renderChunk(span.from, span.to);
+    } catch {
+      return null;
+    }
+  }
+
+  chunkWindows() {
+    const end = this.trackEnd;
+    let to = Math.min(HEAD_SECONDS, end);
+    const windows = [{ from: 0, to }];
+
+    while (to < end) {
+      const from = to;
+
+      to = Math.min(from + CHUNK_SECONDS, end);
+      windows.push({ from, to });
+    }
+
+    return windows;
+  }
+
+  renderChunk(from, to) {
+    const offlineCtx = new OfflineAudioContext({
+      numberOfChannels: 1,
+      length: Math.ceil((to - from + RENDER_TAIL_SECONDS) * RENDER_SAMPLE_RATE),
+      sampleRate: RENDER_SAMPLE_RATE
+    });
+
+    // The closing bells sit past trackEnd, so the last window owns them.
+    this.scheduleCues(offlineCtx, from, to >= this.trackEnd ? Infinity : to);
+
+    return offlineCtx.startRendering();
+  }
+
+  cuesInWindow(from, to) {
+    return this.cues.filter((cue) => cue.time >= from && cue.time < to);
+  }
+
+  scheduleCues(ctx, from, to) {
+    for (const cue of this.cuesInWindow(from, to)) {
+      CUE_PLAYERS[cue.kind](ctx, cue.time - from, cue.high);
+    }
+  }
+
+  buildCues() {
+    const cues = [];
+
+    for (let n = 0; n < COUNTDOWN_SECONDS; n++) {
+      cues.push({ kind: 'countBeep', time: PREROLL_LEAD + n });
+    }
+
+    if (this.workout.type === 'random') {
+      this.addRandomCues(cues);
+    } else {
+      cues.push({ kind: 'bell', time: this.startTime });
+
+      for (let i = 0; i < this.segments.length; i++) {
+        this.addSegmentEndCues(cues, i);
+      }
+    }
+
+    return cues;
+  }
+
+  addSegmentEndCues(cues, index) {
     const lead = this.workout.warning_lead_sec;
     const seg = this.segments[index];
 
-    playWarningCue(ctx, seg.end - lead);
+    cues.push({ kind: 'warning', time: seg.end - lead });
 
     for (let second = lead; second >= 1; second--) {
-      playTickTock(ctx, seg.end - second, second % 2 === 0);
+      cues.push({ kind: 'tickTock', time: seg.end - second, high: second % 2 === 0 });
     }
 
     const next = this.segments[index + 1];
 
     if (next == null) {
-      playBell(ctx, seg.end);
-      playBell(ctx, seg.end + 0.34);
+      cues.push({ kind: 'bell', time: seg.end }, { kind: 'bell', time: seg.end + FINAL_BELL_GAP });
     } else if (next.kind === 'work') {
-      playBell(ctx, seg.end);
+      cues.push({ kind: 'bell', time: seg.end });
     } else {
-      playRestCue(ctx, seg.end);
+      cues.push({ kind: 'restCue', time: seg.end });
     }
   }
 
-  scheduleRandomCues(ctx) {
+  addRandomCues(cues) {
     for (const segment of this.segments) {
       if (segment.kind === 'work') {
-        playBurstStartCue(ctx, segment.start);
-        playBurstEndCue(ctx, segment.end);
+        cues.push({ kind: 'burstStart', time: segment.start }, { kind: 'burstEnd', time: segment.end });
       }
     }
 
     const finish = this.segments[this.segments.length - 1].end;
 
-    playBell(ctx, finish);
-    playBell(ctx, finish + 0.34);
+    cues.push({ kind: 'bell', time: finish }, { kind: 'bell', time: finish + FINAL_BELL_GAP });
   }
 
   loop() {

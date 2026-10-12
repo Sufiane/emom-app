@@ -21,18 +21,11 @@ function writeString(view, offset, text) {
   }
 }
 
-function encodeWav(audioBuffer) {
-  const numChannels = audioBuffer.numberOfChannels;
-  const sampleRate = audioBuffer.sampleRate;
+function writeWavHeader(view, numChannels, sampleRate, dataSize) {
   const blockAlign = numChannels * 2;
-  const dataSize = audioBuffer.length * blockAlign;
-  const fileSize = 44 + dataSize;
-
-  const out = new ArrayBuffer(fileSize);
-  const view = new DataView(out);
 
   writeString(view, 0, 'RIFF');
-  view.setUint32(4, fileSize - 8, true);
+  view.setUint32(4, 36 + dataSize, true);
   writeString(view, 8, 'WAVE');
   writeString(view, 12, 'fmt ');
   view.setUint32(16, 16, true);
@@ -44,6 +37,34 @@ function encodeWav(audioBuffer) {
   view.setUint16(34, 16, true);
   writeString(view, 36, 'data');
   view.setUint32(40, dataSize, true);
+}
+
+function toPcm16(sample) {
+  const clamped = Math.max(-1, Math.min(1, sample));
+
+  return Math.round(clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff);
+}
+
+// Int16Array is little-endian on every platform the app targets.
+function pcmToWav(pcm, sampleRate) {
+  const out = new ArrayBuffer(44 + pcm.length * 2);
+
+  writeWavHeader(new DataView(out), 1, sampleRate, pcm.length * 2);
+  new Int16Array(out, 44).set(pcm);
+
+  return new Blob([out], { type: 'audio/wav' });
+}
+
+function encodeWav(audioBuffer) {
+  const numChannels = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  const blockAlign = numChannels * 2;
+  const dataSize = audioBuffer.length * blockAlign;
+
+  const out = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(out);
+
+  writeWavHeader(view, numChannels, sampleRate, dataSize);
 
   const channels = [];
 
@@ -70,8 +91,17 @@ export class ElementPlayback {
   constructor() {
     this.audio = null;
     this.objectUrl = null;
+    this.pendingUrl = null;
     this.silentUrl = null;
     this.primePromise = null;
+    this.onEnded = null;
+    this.complete = false;
+    this.pcm = null;
+    this.sampleRate = 0;
+    this.trackSeconds = 0;
+    this.tailSeconds = 0;
+    this.userPaused = false;
+    this.swap = null;
   }
 
   // Prime the element inside the caller's user gesture. The async render
@@ -86,14 +116,27 @@ export class ElementPlayback {
   }
 
   get position() {
-    return this.audio == null ? 0 : this.audio.currentTime;
+    if (this.audio == null) {
+      return 0;
+    }
+
+    return this.swap == null ? this.audio.currentTime : this.swapPosition();
   }
 
   get paused() {
+    if (this.swap != null) {
+      return this.userPaused;
+    }
+
     return this.audio != null && this.audio.paused;
   }
 
-  async begin(rendered, onEnded) {
+  // An <audio> element cannot splice chunks, so a short head track starts
+  // playing at once and is replaced by longer prefix tracks (each roughly
+  // double the last) at the same position as the chunks accumulate. Prefix
+  // tracks stop before each chunk's tail because the next chunk's cues are
+  // not summed into it yet; the final track is full length.
+  async begin(rendered, onEnded, { isLast = true, trackSeconds = 0, tailSeconds = 0 } = {}) {
     if (this.audio == null) {
       return false;
     }
@@ -104,10 +147,27 @@ export class ElementPlayback {
       return false;
     }
 
-    this.objectUrl = URL.createObjectURL(encodeWav(rendered));
+    this.onEnded = onEnded;
+    this.complete = isLast;
+    this.tailSeconds = tailSeconds;
+    this.audio.addEventListener('ended', () => {
+      if (this.complete) {
+        this.onEnded();
+      }
+    });
+
+    if (!isLast) {
+      this.sampleRate = rendered.sampleRate;
+      this.trackSeconds = rendered.length / rendered.sampleRate - tailSeconds;
+      this.pcm = new Int16Array(Math.ceil(trackSeconds * rendered.sampleRate));
+      this.mixInto(rendered, 0);
+    }
+
+    const head = isLast ? encodeWav(rendered) : this.prefixWav(this.trackSeconds);
+
+    this.objectUrl = URL.createObjectURL(head);
     this.audio.src = this.objectUrl;
     this.audio.load();
-    this.audio.addEventListener('ended', onEnded);
 
     try {
       await this.audio.play();
@@ -123,13 +183,137 @@ export class ElementPlayback {
     return true;
   }
 
+  mixInto(rendered, from) {
+    const data = rendered.getChannelData(0);
+    const offset = Math.round(from * this.sampleRate);
+    const count = Math.min(data.length, this.pcm.length - offset);
+
+    for (let i = 0; i < count; i++) {
+      this.pcm[offset + i] = Math.max(-0x8000, Math.min(0x7fff, this.pcm[offset + i] + toPcm16(data[i])));
+    }
+  }
+
+  prefixWav(seconds) {
+    const samples = Math.min(Math.round(seconds * this.sampleRate), this.pcm.length);
+
+    return pcmToWav(this.pcm.subarray(0, samples), this.sampleRate);
+  }
+
+  async addChunk(rendered, from, isLast) {
+    if (this.audio == null || this.pcm == null) {
+      return false;
+    }
+
+    this.mixInto(rendered, from);
+
+    const playableSeconds = from + rendered.length / this.sampleRate - this.tailSeconds;
+
+    if (!isLast && playableSeconds < this.trackSeconds * 2) {
+      return true;
+    }
+
+    const seconds = isLast ? this.pcm.length / this.sampleRate : playableSeconds;
+    const swapped = await this.swapTo(this.prefixWav(seconds));
+
+    if (swapped) {
+      this.trackSeconds = seconds;
+      this.complete = isLast;
+    }
+
+    return swapped;
+  }
+
+  swapPosition() {
+    const open = this.swap.since == null ? 0 : performance.now() - this.swap.since;
+
+    return this.swap.at + (this.swap.playedMs + open) / 1000;
+  }
+
+  loadSource(url) {
+    const audio = this.audio;
+
+    return new Promise((resolve) => {
+      const done = (ok) => {
+        audio.removeEventListener('loadedmetadata', onLoaded);
+        audio.removeEventListener('error', onError);
+        resolve(ok);
+      };
+      const onLoaded = () => done(true);
+      const onError = () => done(false);
+
+      audio.addEventListener('loadedmetadata', onLoaded);
+      audio.addEventListener('error', onError);
+      audio.src = url;
+      audio.load();
+    });
+  }
+
+  // Loading resets the element, so the position is tracked here and pause or
+  // resume taps during the load only change state; they are applied after.
+  async swapTo(blob) {
+    const audio = this.audio;
+
+    this.swap = { at: audio.currentTime, playedMs: 0, since: this.userPaused ? null : performance.now() };
+    this.pendingUrl = URL.createObjectURL(blob);
+
+    const swapped = await this.loadSource(this.pendingUrl);
+
+    if (this.audio !== audio) {
+      return false;
+    }
+
+    if (swapped) {
+      URL.revokeObjectURL(this.objectUrl);
+      this.objectUrl = this.pendingUrl;
+    } else {
+      URL.revokeObjectURL(this.pendingUrl);
+      await this.loadSource(this.objectUrl);
+    }
+
+    this.pendingUrl = null;
+
+    if (this.audio !== audio) {
+      return false;
+    }
+
+    audio.currentTime = this.swapPosition();
+    this.swap = null;
+
+    let played = true;
+
+    if (!this.userPaused) {
+      played = await audio.play().then(() => true, () => false);
+    }
+
+    return swapped && played;
+  }
+
   pause() {
+    this.userPaused = true;
+
+    if (this.swap != null) {
+      if (this.swap.since != null) {
+        this.swap.playedMs += performance.now() - this.swap.since;
+        this.swap.since = null;
+      }
+
+      return;
+    }
+
     if (this.audio != null && !this.audio.paused) {
       this.audio.pause();
     }
   }
 
   resume() {
+    this.userPaused = false;
+
+    if (this.swap != null) {
+      this.swap.since ??= performance.now();
+
+      return;
+    }
+
     if (this.audio != null && this.audio.paused) {
       this.audio.play().catch(() => {});
     }
@@ -143,14 +327,14 @@ export class ElementPlayback {
       this.audio = null;
     }
 
-    if (this.objectUrl != null) {
-      URL.revokeObjectURL(this.objectUrl);
-      this.objectUrl = null;
-    }
+    this.pcm = null;
+    this.swap = null;
 
-    if (this.silentUrl != null) {
-      URL.revokeObjectURL(this.silentUrl);
-      this.silentUrl = null;
+    for (const key of ['objectUrl', 'pendingUrl', 'silentUrl']) {
+      if (this[key] != null) {
+        URL.revokeObjectURL(this[key]);
+        this[key] = null;
+      }
     }
   }
 }
@@ -165,7 +349,8 @@ export class ContextPlayback {
 
   constructor(ContextClass) {
     this.ctx = new ContextClass();
-    this.source = null;
+    this.sources = [];
+    this.onEnded = null;
     this.startedAt = null;
     this.isPaused = false;
     this.stopped = false;
@@ -192,19 +377,57 @@ export class ContextPlayback {
     return this.isPaused;
   }
 
-  async begin(rendered, onEnded) {
+  async begin(rendered, onEnded, { isLast = true } = {}) {
     if (this.stopped) {
       return false;
     }
 
-    this.source = this.ctx.createBufferSource();
-    this.source.buffer = rendered;
-    this.source.connect(this.ctx.destination);
-    this.source.onended = onEnded;
+    this.onEnded = onEnded;
     this.startedAt = this.ctx.currentTime;
-    this.source.start();
+    this.startSource(rendered, this.startedAt, isLast);
 
     return true;
+  }
+
+  async addChunk(rendered, from, isLast) {
+    if (this.stopped || this.startedAt == null) {
+      return false;
+    }
+
+    const when = this.startedAt + from;
+    const late = this.ctx.currentTime - when;
+
+    if (late <= 0) {
+      this.startSource(rendered, when, isLast);
+
+      return true;
+    }
+
+    console.warn(`audio chunk at ${from}s arrived ${late.toFixed(2)}s late`);
+
+    if (late < (rendered.duration ?? Infinity)) {
+      this.startSource(rendered, this.ctx.currentTime, isLast, late);
+    } else if (isLast) {
+      this.onEnded?.();
+    }
+
+    return true;
+  }
+
+  startSource(rendered, when, isLast, offset) {
+    const source = this.ctx.createBufferSource();
+
+    source.buffer = rendered;
+    source.connect(this.ctx.destination);
+    source.onended = () => {
+      this.sources = this.sources.filter((active) => active !== source);
+
+      if (isLast) {
+        this.onEnded?.();
+      }
+    };
+    source.start(when, offset);
+    this.sources.push(source);
   }
 
   pause() {
@@ -220,17 +443,17 @@ export class ContextPlayback {
   stop() {
     this.stopped = true;
 
-    if (this.source != null) {
-      this.source.onended = null;
+    for (const source of this.sources) {
+      source.onended = null;
 
       try {
-        this.source.stop();
+        source.stop();
       } catch {
         // Already stopped.
       }
-
-      this.source = null;
     }
+
+    this.sources = [];
 
     this.ctx.close().catch(() => {});
   }
