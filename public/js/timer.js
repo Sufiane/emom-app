@@ -7,6 +7,7 @@
 
 import { createPlayback } from './playback.js';
 import { generateBurstSchedule, segmentsFromBursts } from './random-hiit.js';
+import { workoutTotalSeconds } from './schedule.js';
 
 // Shared output bus: a brick-wall-ish limiter so everything can be driven
 // loud and punchy without harsh clipping at the destination.
@@ -331,13 +332,7 @@ export class WorkoutTimer {
   }
 
   get totalDuration() {
-    if (this.workout.type === 'random') {
-      return this.workout.total_sec;
-    }
-
-    const { rounds, work_sec, rest_sec } = this.workout;
-
-    return rounds * (work_sec + rest_sec);
+    return workoutTotalSeconds(this.workout);
   }
 
   buildSegments() {
@@ -362,7 +357,7 @@ export class WorkoutTimer {
       segments.push({ kind: 'work', round, start: cursor, end: cursor + work_sec });
       cursor += work_sec;
 
-      if (rest_sec > 0) {
+      if (rest_sec > 0 && round < rounds) {
         segments.push({ kind: 'rest', round, start: cursor, end: cursor + rest_sec });
         cursor += rest_sec;
       }
@@ -618,7 +613,7 @@ export class WorkoutTimer {
       if (elapsed < 0) {
         const remaining = Math.max(1, Math.ceil(-elapsed));
 
-        this.onUpdate({ phase: 'countdown', count: Math.min(COUNTDOWN_SECONDS, remaining) });
+        this.onUpdate({ phase: 'countdown', count: Math.min(COUNTDOWN_SECONDS, remaining), progress: 0 });
         this.rafId = requestAnimationFrame(tick);
 
         return;
@@ -632,7 +627,8 @@ export class WorkoutTimer {
           round: last.round,
           totalRounds: this.workout.rounds,
           remainingPhase: 0,
-          remainingTotal: 0
+          remainingTotal: 0,
+          progress: 1
         });
         this.finish();
 
@@ -656,7 +652,8 @@ export class WorkoutTimer {
         remainingPhase: this.workout.type === 'random' && current.kind === 'rest'
           ? null
           : current.end - nowTime,
-        remainingTotal: total - elapsed
+        remainingTotal: total - elapsed,
+        progress: Math.min(1, Math.max(0, elapsed / total))
       });
 
       this.rafId = requestAnimationFrame(tick);
