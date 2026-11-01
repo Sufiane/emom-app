@@ -337,6 +337,30 @@ li button {
   font-size: 0.85rem;
 }
 
+.run-progress {
+  height: 1.25rem;
+  margin: 0.9rem 0 0;
+  border: 1px solid var(--muted);
+  border-radius: var(--radius);
+  background: oklch(0.34 0.025 40);
+  overflow: hidden;
+}
+
+.run-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transform: scaleX(var(--progress, 0));
+  transform-origin: left;
+}
+
+#view-runner[data-phase="rest"] .run-progress-fill {
+  background: var(--warn);
+}
+
+#view-runner[data-state="paused"] .run-progress {
+  opacity: 0.55;
+}
+
 .run-hint {
   font-family: var(--font-cond);
   font-weight: 500;
@@ -578,6 +602,11 @@ body[data-view="runner"] main {
     margin: 0.1rem 0;
   }
 
+  body[data-view="runner"] .run-progress {
+    height: 0.9rem;
+    margin-top: 0.4rem;
+  }
+
   body[data-view="runner"] .runner-actions {
     margin-top: 0.4rem;
   }
@@ -640,6 +669,11 @@ body[data-view="runner"].landscape-rotate .big-time {
 body[data-view="runner"].landscape-rotate #run-total {
   font-size: 0.85rem;
   margin: 0.1rem 0;
+}
+
+body[data-view="runner"].landscape-rotate .run-progress {
+  height: 0.9rem;
+  margin-top: 0.4rem;
 }
 
 body[data-view="runner"].landscape-rotate .runner-actions {

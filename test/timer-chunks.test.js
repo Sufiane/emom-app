@@ -85,6 +85,72 @@ describe('WorkoutTimer chunk windows', () => {
   });
 });
 
+describe('WorkoutTimer interval schedule', () => {
+  describe('when the workout has rest between rounds', () => {
+    it('ends on a work segment with no trailing rest', () => {
+      const { segments } = timerFor(EMOM);
+      assert.deepEqual(segments.map((segment) => segment.kind), ['work', 'rest', 'work', 'rest', 'work']);
+    });
+
+    it('totals one fewer rest than rounds', () => {
+      assert.equal(timerFor(EMOM).totalDuration, 160);
+    });
+
+    it('ends the last segment at the track end', () => {
+      const timer = timerFor(EMOM);
+      assert.equal(timer.segments.at(-1).end, timer.trackEnd);
+      assert.equal(timer.trackEnd, timer.startTime + 160);
+    });
+
+    it('ends the last chunk window at the track end', () => {
+      const timer = timerFor(EMOM);
+      assert.equal(timer.chunkWindows().pop().to, timer.trackEnd);
+    });
+
+    it('never numbers a segment beyond the round count', () => {
+      const { segments } = timerFor(EMOM);
+      assert.equal(Math.max(...segments.map((segment) => segment.round)), 3);
+      assert.equal(segments.at(-1).round, 3);
+      assert.deepEqual(segments.filter((segment) => segment.kind === 'rest').map((segment) => segment.round), [1, 2]);
+    });
+  });
+
+  describe('when there is a single round', () => {
+    it('has one work segment and no rest', () => {
+      const { segments } = timerFor({ ...EMOM, rounds: 1 });
+      assert.deepEqual(segments.map((segment) => segment.kind), ['work']);
+    });
+  });
+
+  describe('when rest_sec is 0', () => {
+    it('has only work segments', () => {
+      const { segments } = timerFor({ ...EMOM, rest_sec: 0 });
+      assert.deepEqual(segments.map((segment) => segment.kind), ['work', 'work', 'work']);
+    });
+  });
+
+  describe('closing cues', () => {
+    it('puts both final bells at the last work end', () => {
+      const timer = timerFor(EMOM);
+      const closing = timer.cues.filter((cue) => cue.time >= timer.trackEnd);
+      assert.deepEqual(closing.map((cue) => cue.kind), ['bell', 'bell']);
+      assert.equal(closing[0].time, timer.trackEnd);
+    });
+
+    it('plays no rest cue after the last work starts', () => {
+      const timer = timerFor(EMOM);
+      const lastWork = timer.segments.at(-1);
+      assert.equal(timer.cues.filter((cue) => cue.kind === 'restCue' && cue.time > lastWork.start).length, 0);
+    });
+
+    it('anchors the final warning to the last work end', () => {
+      const timer = timerFor(EMOM);
+      const warnings = timer.cues.filter((cue) => cue.kind === 'warning');
+      assert.equal(warnings.at(-1).time, timer.trackEnd - EMOM.warning_lead_sec);
+    });
+  });
+});
+
 let created = [];
 
 class FakeOffline {

@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { getMixWithMusic, isIos, setMixWithMusic } from './audio-prefs.js';
 import { maxBursts, validateRandomConfig } from './random-hiit.js';
+import { intervalTotalSeconds, workoutTotalSeconds } from './schedule.js';
 import { WorkoutTimer } from './timer.js';
 
 const byId = (id) => document.getElementById(id);
@@ -31,14 +32,6 @@ function formatClock(totalSeconds) {
 }
 
 const TYPE_LABELS = { emom: 'EMOM', intervals: 'Intervals', random: 'Random HIIT' };
-
-function workoutTotalSeconds(workout) {
-  if (workout.type === 'random') {
-    return workout.total_sec;
-  }
-
-  return workout.rounds * (workout.work_sec + (workout.rest_sec || 0));
-}
 
 // ---- Auth ----
 
@@ -296,7 +289,11 @@ function updateFormDerived() {
 
   const rounds = Number(roundsInput.value) || 0;
   const total = currentType === 'intervals'
-    ? rounds * ((Number(workInput.value) || 0) + (Number(restInput.value) || 0))
+    ? intervalTotalSeconds({
+      rounds,
+      work_sec: Number(workInput.value) || 0,
+      rest_sec: Number(restInput.value) || 0
+    })
     : rounds * Number(intervalInput.value);
 
   byId('w-total').textContent = formatClock(total);
@@ -520,6 +517,7 @@ async function openRunner(workout) {
   byId('run-total').textContent = `Total ${formatClock(workoutTotalSeconds(workout))}`;
   runnerSection.dataset.phase = 'work';
   runnerSection.dataset.state = 'idle';
+  setProgress(0);
   startBtn.textContent = 'Start';
   startBtn.dataset.workout = JSON.stringify(workout);
   const resetBtn = byId('run-reset');
@@ -528,6 +526,10 @@ async function openRunner(workout) {
   showView('runner');
   const locked = await lockLandscape();
   byId('run-rotate').classList.toggle('hidden', locked);
+}
+
+function setProgress(fraction) {
+  runnerSection.style.setProperty('--progress', String(fraction));
 }
 
 function renderRandomUpdate(state) {
@@ -547,6 +549,8 @@ function renderRandomUpdate(state) {
 }
 
 function onRunUpdate(state) {
+  setProgress(state.progress);
+
   if (state.phase === 'countdown') {
     byId('run-time').textContent = String(state.count);
     byId('run-rounds').textContent = 'Get ready';
@@ -574,6 +578,7 @@ function onRunFinish() {
   releaseWakeLock();
   startBtn.textContent = 'Run again';
   runnerSection.dataset.state = 'done';
+  setProgress(1);
   byId('run-rounds').textContent = 'Finished';
 
   if (!loggedIn) {
