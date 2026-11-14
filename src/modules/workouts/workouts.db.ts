@@ -1,6 +1,6 @@
 import type { BurstSec } from '../../lib/brand/burst-sec';
 import type { EmomIntervalSec } from '../../lib/brand/emom-interval-sec';
-import type { LayerSec } from '../../lib/brand/layer-sec';
+import { makeLayerSec, type LayerSec } from '../../lib/brand/layer-sec';
 import type { MinRestSec } from '../../lib/brand/min-rest-sec';
 import type { PyramidMode } from '../../lib/brand/pyramid-mode';
 import type { PyramidRestSec } from '../../lib/brand/pyramid-rest-sec';
@@ -78,12 +78,38 @@ function pyramidColumns(row: WorkoutRow): PyramidColumns {
   return [row.mode, JSON.stringify(row.layers)];
 }
 
-function toRow(stored: StoredRow): WorkoutRow {
+function parseLayers(raw: unknown): LayerSec[] | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+
+    return parsed.map((value) => makeLayerSec(value));
+  } catch {
+    return null;
+  }
+}
+
+function toRow(stored: StoredRow): WorkoutRow | null {
   if (stored.type !== 'pyramids') {
     return stored;
   }
 
-  return { ...stored, layers: JSON.parse(stored.layers) as LayerSec[] };
+  const layers = parseLayers(stored.layers);
+
+  if (layers == null) {
+    console.warn(`workout ${stored.id} skipped: corrupt pyramid layers`);
+
+    return null;
+  }
+
+  return { ...stored, layers };
 }
 
 type RandomColumns = [number | null, number | null, number | null, number | null];
@@ -105,7 +131,17 @@ export class WorkoutsDb {
       .bind(userId)
       .all<StoredRow>();
 
-    return result.results.map((stored) => toRow(stored));
+    const rows: WorkoutRow[] = [];
+
+    for (const stored of result.results) {
+      const row = toRow(stored);
+
+      if (row != null) {
+        rows.push(row);
+      }
+    }
+
+    return rows;
   }
 
   async findById(id: WorkoutId): Promise<WorkoutRow | null> {
