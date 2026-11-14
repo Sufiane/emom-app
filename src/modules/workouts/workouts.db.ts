@@ -1,6 +1,9 @@
 import type { BurstSec } from '../../lib/brand/burst-sec';
 import type { EmomIntervalSec } from '../../lib/brand/emom-interval-sec';
+import type { LayerSec } from '../../lib/brand/layer-sec';
 import type { MinRestSec } from '../../lib/brand/min-rest-sec';
+import type { PyramidMode } from '../../lib/brand/pyramid-mode';
+import type { PyramidRestSec } from '../../lib/brand/pyramid-rest-sec';
 import type { RestPhaseSec } from '../../lib/brand/rest-phase-sec';
 import type { Rounds } from '../../lib/brand/rounds';
 import type { TotalSec } from '../../lib/brand/total-sec';
@@ -11,7 +14,7 @@ import type { WorkPhaseSec } from '../../lib/brand/work-phase-sec';
 import type { WorkoutId } from '../../lib/brand/workout-id';
 import type { WorkoutName } from '../../lib/brand/workout-name';
 
-export type WorkoutType = 'emom' | 'intervals' | 'random';
+export type WorkoutType = 'emom' | 'intervals' | 'random' | 'pyramids';
 
 type WorkoutBase = {
   id: WorkoutId;
@@ -49,7 +52,39 @@ export type RandomWorkoutRow = WorkoutBase & {
   burst_max_sec: BurstSec;
 };
 
-export type WorkoutRow = EmomWorkoutRow | IntervalsWorkoutRow | RandomWorkoutRow;
+export type PyramidsWorkoutRow = WorkoutBase & {
+  type: 'pyramids';
+  rounds: null;
+  work_sec: null;
+  rest_sec: 0 | PyramidRestSec;
+  warning_lead_sec: WarningLeadSec;
+  mode: PyramidMode;
+  layers: LayerSec[];
+};
+
+export type WorkoutRow = EmomWorkoutRow | IntervalsWorkoutRow | RandomWorkoutRow | PyramidsWorkoutRow;
+
+type StoredRow =
+  | Exclude<WorkoutRow, PyramidsWorkoutRow>
+  | (Omit<PyramidsWorkoutRow, 'layers'> & { layers: string });
+
+type PyramidColumns = [PyramidMode | null, string | null];
+
+function pyramidColumns(row: WorkoutRow): PyramidColumns {
+  if (row.type !== 'pyramids') {
+    return [null, null];
+  }
+
+  return [row.mode, JSON.stringify(row.layers)];
+}
+
+function toRow(stored: StoredRow): WorkoutRow {
+  if (stored.type !== 'pyramids') {
+    return stored;
+  }
+
+  return { ...stored, layers: JSON.parse(stored.layers) as LayerSec[] };
+}
 
 type RandomColumns = [number | null, number | null, number | null, number | null];
 
@@ -68,22 +103,24 @@ export class WorkoutsDb {
     const result = await this.db
       .prepare('SELECT * FROM workouts WHERE user_id = ? ORDER BY created_at DESC')
       .bind(userId)
-      .all<WorkoutRow>();
+      .all<StoredRow>();
 
-    return result.results;
+    return result.results.map((stored) => toRow(stored));
   }
 
-  findById(id: WorkoutId): Promise<WorkoutRow | null> {
-    return this.db
+  async findById(id: WorkoutId): Promise<WorkoutRow | null> {
+    const stored = await this.db
       .prepare('SELECT * FROM workouts WHERE id = ?')
       .bind(id)
-      .first<WorkoutRow>();
+      .first<StoredRow>();
+
+    return stored == null ? null : toRow(stored);
   }
 
   async insert(row: WorkoutRow): Promise<void> {
     await this.db
       .prepare(
-        'INSERT INTO workouts (id, user_id, name, type, rounds, work_sec, rest_sec, warning_lead_sec, total_sec, min_rest_sec, burst_min_sec, burst_max_sec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO workouts (id, user_id, name, type, rounds, work_sec, rest_sec, warning_lead_sec, total_sec, min_rest_sec, burst_min_sec, burst_max_sec, mode, layers, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
       .bind(
         row.id,
@@ -95,6 +132,7 @@ export class WorkoutsDb {
         row.rest_sec,
         row.warning_lead_sec,
         ...randomColumns(row),
+        ...pyramidColumns(row),
         row.created_at,
         row.updated_at
       )
@@ -104,7 +142,7 @@ export class WorkoutsDb {
   async update(row: WorkoutRow): Promise<void> {
     await this.db
       .prepare(
-        'UPDATE workouts SET name = ?, type = ?, rounds = ?, work_sec = ?, rest_sec = ?, warning_lead_sec = ?, total_sec = ?, min_rest_sec = ?, burst_min_sec = ?, burst_max_sec = ?, updated_at = ? WHERE id = ?'
+        'UPDATE workouts SET name = ?, type = ?, rounds = ?, work_sec = ?, rest_sec = ?, warning_lead_sec = ?, total_sec = ?, min_rest_sec = ?, burst_min_sec = ?, burst_max_sec = ?, mode = ?, layers = ?, updated_at = ? WHERE id = ?'
       )
       .bind(
         row.name,
@@ -114,6 +152,7 @@ export class WorkoutsDb {
         row.rest_sec,
         row.warning_lead_sec,
         ...randomColumns(row),
+        ...pyramidColumns(row),
         row.updated_at,
         row.id
       )

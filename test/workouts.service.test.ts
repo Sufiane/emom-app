@@ -65,6 +65,24 @@ const INTERVALS: WorkoutInput = {
   warning_lead_sec: 5
 };
 
+const PYRAMID: WorkoutInput = {
+  name: ' Ladder ',
+  type: 'pyramids',
+  mode: 'normal',
+  layers: [10, 20, 30],
+  rest_sec: 0,
+  warning_lead_sec: 5
+};
+
+const HARD_PYRAMID: WorkoutInput = {
+  name: 'Hard ladder',
+  type: 'pyramids',
+  mode: 'hard',
+  layers: [20, 40, 60],
+  rest_sec: 15,
+  warning_lead_sec: 5
+};
+
 async function rejectionMessage(promise: Promise<unknown>): Promise<string> {
   try {
     await promise;
@@ -190,6 +208,138 @@ describe('WorkoutsService', () => {
 
         return true;
       });
+    });
+  });
+
+  describe('create with a valid normal pyramid', () => {
+    it('stores mode and layers, nulls the timed columns and zeroes rest', async () => {
+      const row = await service.create(USER, PYRAMID);
+
+      assert.equal(row.type, 'pyramids');
+      assert.equal(row.name, 'Ladder');
+      assert.equal(row.rounds, null);
+      assert.equal(row.work_sec, null);
+      assert.equal(row.rest_sec, 0);
+      assert.equal(row.warning_lead_sec, 5);
+      assert.equal(row.type === 'pyramids' && row.mode, 'normal');
+      assert.deepEqual(row.type === 'pyramids' && row.layers, [10, 20, 30]);
+      assert.equal(db.rows.get(row.id), row);
+    });
+  });
+
+  describe('create with a valid hard pyramid', () => {
+    it('stores the shared rest', async () => {
+      const row = await service.create(USER, HARD_PYRAMID);
+
+      assert.equal(row.rest_sec, 15);
+      assert.equal(row.type === 'pyramids' && row.mode, 'hard');
+    });
+  });
+
+  describe('create with an invalid pyramid', () => {
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ['mode is unknown', { mode: 'easy' }, 'mode_invalid'],
+      ['layers is not an array', { layers: '10,20,30' }, 'layers_invalid'],
+      ['there are only two layers', { layers: [10, 20] }, 'layers_too_few'],
+      ['a layer is below 5 seconds', { layers: [4, 20, 30] }, 'work_out_of_range'],
+      ['a layer is above 600 seconds', { layers: [10, 20, 601] }, 'work_out_of_range'],
+      ['a layer is not an integer', { layers: [10, 20.5, 30] }, 'work_out_of_range'],
+      ['a layer is a string', { layers: [10, '20', 30] }, 'work_out_of_range'],
+      ['two layers are equal', { layers: [10, 20, 20] }, 'layers_not_ascending'],
+      ['layers descend', { layers: [30, 20, 10] }, 'layers_not_ascending'],
+      ['normal mode has a non-zero rest', { rest_sec: 30 }, 'rest_sec_must_be_zero'],
+      ['lead equals the first layer', { warning_lead_sec: 10, layers: [10, 20, 30] }, 'lead_too_long'],
+      ['lead is below the allowed range', { warning_lead_sec: 2 }, 'warning_lead_sec_out_of_range']
+    ];
+
+    for (const [condition, patch, code] of cases) {
+      describe(`when ${condition}`, () => {
+        it(`rejects with ${code}`, async () => {
+          const input = { ...PYRAMID, ...patch } as WorkoutInput;
+
+          assert.equal(await rejectionMessage(service.create(USER, input)), code);
+          assert.equal(db.rows.size, 0);
+        });
+      });
+    }
+  });
+
+  describe('create with an invalid hard pyramid', () => {
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ['rest is missing', { rest_sec: undefined }, 'rest_out_of_range'],
+      ['rest is zero', { rest_sec: 0 }, 'rest_out_of_range'],
+      ['rest is not an integer', { rest_sec: 7.5 }, 'rest_out_of_range'],
+      ['rest is one above first layer minus 5', { rest_sec: 16 }, 'rest_too_close_to_work'],
+      ['first layer is 5 seconds', { layers: [5, 20, 30], rest_sec: 1 }, 'rest_too_close_to_work'],
+      ['lead equals the shared rest', { rest_sec: 5, warning_lead_sec: 5 }, 'lead_too_long']
+    ];
+
+    for (const [condition, patch, code] of cases) {
+      describe(`when ${condition}`, () => {
+        it(`rejects with ${code}`, async () => {
+          const input = { ...HARD_PYRAMID, ...patch } as WorkoutInput;
+
+          assert.equal(await rejectionMessage(service.create(USER, input)), code);
+        });
+      });
+    }
+  });
+
+  describe('create at the pyramid boundaries', () => {
+    describe('when there are 3 layers or 50 layers', () => {
+      it('accepts both', async () => {
+        const many = Array.from({ length: 50 }, (unused, index) => 10 + index);
+
+        await service.create(USER, { ...PYRAMID, layers: [10, 20, 30] } as WorkoutInput);
+        await service.create(USER, { ...PYRAMID, layers: many } as WorkoutInput);
+
+        assert.equal(db.rows.size, 2);
+      });
+    });
+
+    describe('when hard rest equals first layer minus 5', () => {
+      it('accepts it', async () => {
+        const row = await service.create(USER, { ...HARD_PYRAMID, rest_sec: 15, warning_lead_sec: 14 } as WorkoutInput);
+
+        assert.equal(row.rest_sec, 15);
+      });
+    });
+
+    describe('when layers sit on the 5 and 600 second bounds', () => {
+      it('accepts them', async () => {
+        const row = await service.create(USER, { ...PYRAMID, layers: [5, 300, 600], warning_lead_sec: 3 } as WorkoutInput);
+
+        assert.equal(row.type === 'pyramids' && row.layers[0], 5);
+      });
+    });
+
+    describe('when the top two layers are both 600', () => {
+      it('rejects with layers_not_ascending', async () => {
+        const input = { ...PYRAMID, layers: [5, 600, 600], warning_lead_sec: 3 } as WorkoutInput;
+
+        assert.equal(await rejectionMessage(service.create(USER, input)), 'layers_not_ascending');
+      });
+    });
+  });
+
+  describe('update switching emom to pyramids', () => {
+    it('replaces the row and keeps id and created_at', async () => {
+      const created = await service.create(USER, EMOM);
+      const updated = await service.update(USER, created.id, PYRAMID);
+
+      assert.equal(updated.id, created.id);
+      assert.equal(updated.created_at, created.created_at);
+      assert.equal(updated.type, 'pyramids');
+    });
+  });
+
+  describe('update switching pyramids to emom', () => {
+    it('drops mode and layers from the stored row', async () => {
+      const created = await service.create(USER, PYRAMID);
+      const updated = await service.update(USER, created.id, EMOM);
+
+      assert.equal(updated.type, 'emom');
+      assert.equal('layers' in updated, false);
     });
   });
 

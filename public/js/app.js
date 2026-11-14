@@ -96,6 +96,10 @@ function workoutItem(workout) {
     summary = `${formatClock(total)} · bursts ${workout.burst_min_sec}-${workout.burst_max_sec}s · rest ≥ ${workout.min_rest_sec}s`;
   } else if (workout.type === 'intervals') {
     summary = `${workout.rounds} × (${workout.work_sec}s / ${workout.rest_sec}s) · ${formatClock(total)}`;
+  } else if (workout.type === 'pyramids') {
+    const modeLabel = workout.mode === 'hard' ? 'Hard' : 'Normal';
+
+    summary = `${workout.layers.length} layers (${workout.layers[0]}-${workout.layers.at(-1)}s) · ${modeLabel} · ${formatClock(total)}`;
   } else {
     summary = `${workout.rounds} × ${workout.work_sec}s · ${formatClock(total)}`;
   }
@@ -216,7 +220,10 @@ const ERROR_MESSAGES = {
   layers_not_ascending: 'Each layer must be longer than the one before',
   work_out_of_range: 'Each layer must be between 5 and 600 seconds',
   rest_out_of_range: 'Rest must be a whole number of seconds, at least 1',
-  lead_too_long: 'Warning lead must be shorter than the shortest work or rest'
+  lead_too_long: 'Warning lead must be shorter than the shortest work or rest',
+  mode_invalid: 'Choose Normal or Hard mode',
+  layers_invalid: 'Add your layers',
+  rest_too_close_to_work: 'Rest must be at least 5 seconds shorter than the first layer'
 };
 
 function errorMessage(code) {
@@ -273,7 +280,7 @@ function setType(type) {
     setSectionActive(element, !element.dataset.except.split(' ').includes(type));
   }
 
-  const runOnly = !loggedIn || type === 'pyramids';
+  const runOnly = !loggedIn;
 
   byId('form-submit').textContent = runOnly ? 'Start' : 'Save';
   byId('w-name').required = !runOnly;
@@ -467,7 +474,7 @@ function openForm(workout) {
   pyramidRestInput.value = String(DEFAULT_PYRAMID_REST_SEC);
   resetPyramidRows(DEFAULT_PYRAMID_LAYERS);
 
-  const timed = workout != null && type !== 'random';
+  const timed = workout != null && type !== 'random' && type !== 'pyramids';
 
   if (type === 'intervals') {
     workInput.value = String(timed ? workout.work_sec : 40);
@@ -478,6 +485,13 @@ function openForm(workout) {
 
   roundsInput.value = String(timed ? workout.rounds : 10);
   leadInput.value = String(timed ? workout.warning_lead_sec : 10);
+
+  if (workout != null && type === 'pyramids') {
+    pyramidMode = workout.mode;
+    pyramidRestInput.value = String(workout.mode === 'hard' ? workout.rest_sec : DEFAULT_PYRAMID_REST_SEC);
+    resetPyramidRows(workout.layers);
+    leadInput.value = String(workout.warning_lead_sec);
+  }
 
   const saved = workout != null && type === 'random';
 
@@ -527,7 +541,13 @@ workoutForm.addEventListener('submit', async (event) => {
       return;
     }
 
-    openRunner(pyramid);
+    if (!loggedIn) {
+      openRunner(pyramid);
+
+      return;
+    }
+
+    await saveWorkout({ ...pyramid, name: byId('w-name').value.trim() });
 
     return;
   }
