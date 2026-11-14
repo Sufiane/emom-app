@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import type { UserId } from '../src/lib/brand/user-id';
 import type { WorkoutId } from '../src/lib/brand/workout-id';
 import { WorkoutsDb, type WorkoutRow } from '../src/modules/workouts/workouts.db';
@@ -102,18 +102,43 @@ describe('WorkoutsDb', () => {
     });
   });
 
-  describe('reading a stored pyramid with corrupt layers JSON', () => {
-    beforeEach(() => {
-      fake.stored = [{ ...PYRAMID, layers: '[10,20' }];
-    });
+  describe('reading a stored pyramid with unusable layers', () => {
+    const corruptLayers: [string, unknown][] = [
+      ['malformed JSON', '[10,20'],
+      ['NULL', null],
+      ['non-array JSON', '{"a":1}'],
+      ['non-numeric entries', '["x",20]'],
+      ['out-of-range entries', '[1,20]']
+    ];
 
-    it('findById throws', async () => {
-      await assert.rejects(db.findById('w1' as WorkoutId), SyntaxError);
-    });
+    for (const [label, layers] of corruptLayers) {
+      describe(`when layers is ${label}`, () => {
+        let warn: ReturnType<typeof mock.method>;
 
-    it('listByUser throws', async () => {
-      await assert.rejects(db.listByUser('u1' as UserId), SyntaxError);
-    });
+        beforeEach(() => {
+          fake.stored = [{ ...PYRAMID, id: 'bad1', layers }, { ...PYRAMID, id: 'ok1', layers: '[10,20,30]' }];
+          warn = mock.method(console, 'warn', () => undefined);
+        });
+
+        afterEach(() => {
+          warn.mock.restore();
+        });
+
+        it('findById returns null and warns with the row id', async () => {
+          assert.equal(await db.findById('bad1' as WorkoutId), null);
+          assert.equal(warn.mock.callCount(), 1);
+          assert.match(String(warn.mock.calls[0].arguments[0]), /bad1/);
+        });
+
+        it('listByUser skips the row and warns with the row id', async () => {
+          const rows = await db.listByUser('u1' as UserId);
+
+          assert.deepEqual(rows.map((row) => row.id), ['ok1']);
+          assert.equal(warn.mock.callCount(), 1);
+          assert.match(String(warn.mock.calls[0].arguments[0]), /bad1/);
+        });
+      });
+    }
   });
 
   describe('reading a stored emom row', () => {

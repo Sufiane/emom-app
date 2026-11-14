@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { intervalTotalSeconds, pyramidTotalSeconds, workoutTotalSeconds } from '../public/js/schedule.js';
+import { formatClock, formatTotalOrPlaceholder, intervalTotalSeconds, pyramidTotalSeconds, workoutTotalSeconds } from '../public/js/schedule.js';
 
 describe('intervalTotalSeconds', () => {
   describe('when rest is 0', () => {
@@ -63,6 +63,44 @@ describe('workoutTotalSeconds for pyramids', () => {
     it('uses the pyramid formula', () => {
       const workout = { type: 'pyramids', mode: 'normal', layers: [10, 20, 30], rest_sec: 0 };
       assert.equal(workoutTotalSeconds(workout), 170);
+    });
+  });
+});
+
+describe('formatClock', () => {
+  it('pads minutes and seconds', () => {
+    assert.equal(formatClock(65), '01:05');
+  });
+
+  it('rounds fractional seconds up', () => {
+    assert.equal(formatClock(59.2), '01:00');
+  });
+});
+
+describe('formatTotalOrPlaceholder', () => {
+  describe('when the total is finite', () => {
+    it('formats it as a clock', () => {
+      assert.equal(formatTotalOrPlaceholder(125), '02:05');
+    });
+  });
+
+  describe('when the total is NaN', () => {
+    it('returns the placeholder', () => {
+      assert.equal(formatTotalOrPlaceholder(NaN), '--:--');
+    });
+  });
+
+  describe('when the total is infinite', () => {
+    it('returns the placeholder', () => {
+      assert.equal(formatTotalOrPlaceholder(Infinity), '--:--');
+    });
+  });
+
+  describe('when a hard pyramid has a partial rest value', () => {
+    it('returns the placeholder', () => {
+      const workout = { type: 'pyramids', mode: 'hard', layers: [10, 20], rest_sec: Number('-'), warning_lead_sec: 3 };
+
+      assert.equal(formatTotalOrPlaceholder(pyramidTotalSeconds(workout)), '--:--');
     });
   });
 });

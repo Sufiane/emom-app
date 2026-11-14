@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { getMixWithMusic, isIos, setMixWithMusic } from './audio-prefs.js';
 import { MAX_WORK_SEC, MIN_LAYERS, MIN_WORK_SEC, stepsOf, validatePyramid } from './pyramids.js';
 import { maxBursts, validateRandomConfig } from './random-hiit.js';
-import { intervalTotalSeconds, pyramidTotalSeconds, workoutTotalSeconds } from './schedule.js';
+import { formatClock, formatTotalOrPlaceholder, intervalTotalSeconds, pyramidTotalSeconds, workoutTotalSeconds } from './schedule.js';
 import { WorkoutTimer } from './timer.js';
 
 const byId = (id) => document.getElementById(id);
@@ -22,14 +22,6 @@ function applyChrome() {
   byId('login-btn').classList.toggle('hidden', loggedIn);
   byId('guest-banner').classList.toggle('hidden', loggedIn);
   byId('learn').classList.toggle('hidden', loggedIn);
-}
-
-function formatClock(totalSeconds) {
-  const seconds = Math.ceil(totalSeconds);
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-
-  return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
 const TYPE_LABELS = { emom: 'EMOM', intervals: 'Intervals', random: 'Random HIIT', pyramids: 'Pyramids' };
@@ -415,8 +407,9 @@ byId('pyramid-add').addEventListener('click', () => {
 
 function pyramidPreview(workout) {
   const steps = stepsOf(workout);
-  const sequence = steps.map((step) => step.work_sec).join(' → ');
-  const rest = workout.mode === 'hard' ? ` · ${workout.rest_sec}s rest` : '';
+  const sequence = steps.map((step) => (Number.isFinite(step.work_sec) ? step.work_sec : '--')).join(' → ');
+  const restValue = Number.isFinite(workout.rest_sec) ? workout.rest_sec : '--';
+  const rest = workout.mode === 'hard' ? ` · ${restValue}s rest` : '';
 
   return `${sequence} · ${steps.length} steps${rest}`;
 }
@@ -425,7 +418,7 @@ function updatePyramidDerived() {
   const workout = pyramidWorkout();
 
   byId('w-pyramid-preview').textContent = pyramidPreview(workout);
-  byId('w-total').textContent = formatClock(pyramidTotalSeconds(workout));
+  byId('w-total').textContent = formatTotalOrPlaceholder(pyramidTotalSeconds(workout));
 }
 
 function updateFormDerived() {
