@@ -13,6 +13,15 @@ const RANDOM = {
   warning_lead_sec: 3
 };
 
+const PYRAMID = {
+  type: 'pyramids',
+  name: 'Pyramid',
+  mode: 'normal',
+  layers: [10, 20, 30],
+  rest_sec: 0,
+  warning_lead_sec: 3
+};
+
 function timerFor(workout, random = Math.random) {
   const timer = new WorkoutTimer(workout, () => {}, () => {}, random, true);
   timer.prepareSchedule();
@@ -147,6 +156,89 @@ describe('WorkoutTimer interval schedule', () => {
       const timer = timerFor(EMOM);
       const warnings = timer.cues.filter((cue) => cue.kind === 'warning');
       assert.equal(warnings.at(-1).time, timer.trackEnd - EMOM.warning_lead_sec);
+    });
+  });
+});
+
+describe('WorkoutTimer pyramid schedule', () => {
+  describe('when the pyramid is normal 10/20/30', () => {
+    it('alternates work and rest and ends on work', () => {
+      const { segments } = timerFor(PYRAMID);
+      assert.equal(segments.length, 9);
+      assert.deepEqual(
+        segments.map((segment) => segment.kind),
+        ['work', 'rest', 'work', 'rest', 'work', 'rest', 'work', 'rest', 'work']
+      );
+    });
+
+    it('numbers work 1 to 5 with rests sharing the preceding round', () => {
+      const { segments } = timerFor(PYRAMID);
+      assert.deepEqual(segments.filter((segment) => segment.kind === 'work').map((segment) => segment.round), [1, 2, 3, 4, 5]);
+      assert.deepEqual(segments.filter((segment) => segment.kind === 'rest').map((segment) => segment.round), [1, 2, 3, 4]);
+    });
+
+    it('ends the last segment at the track end', () => {
+      const timer = timerFor(PYRAMID);
+      assert.equal(timer.segments.at(-1).end, timer.startTime + 170);
+      assert.equal(timer.trackEnd, timer.startTime + 170);
+    });
+
+    it('ends the last chunk window at the track end', () => {
+      const timer = timerFor(PYRAMID);
+      assert.equal(timer.chunkWindows().pop().to, timer.trackEnd);
+    });
+
+    it('reports the step count as total rounds', () => {
+      assert.equal(timerFor(PYRAMID).totalRounds, 5);
+    });
+  });
+
+  describe('when the workout is not a pyramid', () => {
+    it('reports the rounds field as total rounds', () => {
+      assert.equal(timerFor(EMOM).totalRounds, 3);
+    });
+  });
+
+  describe('when the shared hard rest is 0', () => {
+    it('emits only work segments', () => {
+      const { segments } = timerFor({ ...PYRAMID, mode: 'hard', rest_sec: 0 });
+      assert.deepEqual(segments.map((segment) => segment.kind), ['work', 'work', 'work', 'work', 'work']);
+    });
+  });
+
+  describe('cues', () => {
+    it('puts both final bells at the last work end', () => {
+      const timer = timerFor(PYRAMID);
+      const closing = timer.cues.filter((cue) => cue.time >= timer.trackEnd);
+      assert.deepEqual(closing.map((cue) => cue.kind), ['bell', 'bell']);
+      assert.equal(closing[0].time, timer.trackEnd);
+      assert.ok(Math.abs(closing[1].time - (timer.trackEnd + 0.34)) < 1e-9);
+    });
+
+    it('rings a rest cue at every non-last work end', () => {
+      const timer = timerFor(PYRAMID);
+      const workEnds = timer.segments.filter((segment) => segment.kind === 'work').slice(0, -1).map((segment) => segment.end);
+      const restCues = timer.cues.filter((cue) => cue.kind === 'restCue').map((cue) => cue.time);
+      assert.deepEqual(restCues, workEnds);
+    });
+
+    it('rings a work-start bell at the start and every rest end', () => {
+      const timer = timerFor(PYRAMID);
+      const restEnds = timer.segments.filter((segment) => segment.kind === 'rest').map((segment) => segment.end);
+      const bellTimes = timer.cues.filter((cue) => cue.kind === 'bell').map((cue) => cue.time);
+      assert.ok(bellTimes.includes(timer.startTime));
+
+      for (const end of restEnds) {
+        assert.ok(bellTimes.includes(end));
+      }
+    });
+
+    it('covers every cue exactly once across the chunk windows', () => {
+      const timer = timerFor(PYRAMID);
+      const windowed = windowsCues(timer).flat();
+      const closing = timer.cues.filter((cue) => cue.time >= timer.trackEnd);
+      assert.equal(windowed.length + closing.length, timer.cues.length);
+      assert.equal(new Set(windowed).size, windowed.length);
     });
   });
 });

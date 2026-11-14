@@ -6,6 +6,7 @@
 // user's music app is not interrupted.
 
 import { createPlayback } from './playback.js';
+import { stepsOf } from './pyramids.js';
 import { generateBurstSchedule, segmentsFromBursts } from './random-hiit.js';
 import { workoutTotalSeconds } from './schedule.js';
 
@@ -335,7 +336,39 @@ export class WorkoutTimer {
     return workoutTotalSeconds(this.workout);
   }
 
+  get totalRounds() {
+    if (this.workout.type === 'pyramids') {
+      return stepsOf(this.workout).length;
+    }
+
+    return this.workout.rounds;
+  }
+
+  buildPyramidSegments() {
+    const steps = stepsOf(this.workout);
+    const segments = [];
+    let cursor = this.startTime;
+
+    for (let i = 0; i < steps.length; i++) {
+      const { work_sec, rest_sec } = steps[i];
+
+      segments.push({ kind: 'work', round: i + 1, start: cursor, end: cursor + work_sec });
+      cursor += work_sec;
+
+      if (rest_sec > 0 && i < steps.length - 1) {
+        segments.push({ kind: 'rest', round: i + 1, start: cursor, end: cursor + rest_sec });
+        cursor += rest_sec;
+      }
+    }
+
+    return segments;
+  }
+
   buildSegments() {
+    if (this.workout.type === 'pyramids') {
+      return this.buildPyramidSegments();
+    }
+
     if (this.workout.type === 'random') {
       const { total_sec, min_rest_sec, burst_min_sec, burst_max_sec } = this.workout;
       const bursts = generateBurstSchedule({
@@ -625,7 +658,7 @@ export class WorkoutTimer {
         this.onUpdate({
           phase: last.kind,
           round: last.round,
-          totalRounds: this.workout.rounds,
+          totalRounds: this.totalRounds,
           remainingPhase: 0,
           remainingTotal: 0,
           progress: 1
@@ -648,7 +681,7 @@ export class WorkoutTimer {
       this.onUpdate({
         phase: current.kind,
         round: current.round,
-        totalRounds: this.workout.rounds,
+        totalRounds: this.totalRounds,
         remainingPhase: this.workout.type === 'random' && current.kind === 'rest'
           ? null
           : current.end - nowTime,
