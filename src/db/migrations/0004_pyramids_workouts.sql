@@ -1,0 +1,2 @@
+ALTER TABLE workouts ADD COLUMN mode TEXT;
+ALTER TABLE workouts ADD COLUMN layers TEXT;
