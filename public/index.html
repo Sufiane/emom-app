@@ -74,6 +74,7 @@
         <button type="button" class="type-opt" data-type="emom" aria-selected="true">EMOM</button>
         <button type="button" class="type-opt" data-type="intervals">Intervals</button>
         <button type="button" class="type-opt" data-type="random">Random HIIT</button>
+        <button type="button" class="type-opt" data-type="pyramids">Pyramids</button>
       </div>
 
       <form id="workout-form">
@@ -107,7 +108,22 @@
           <p class="muted">Up to <span id="w-bursts">3</span> bursts</p>
         </div>
 
-        <label data-except="random">Rounds<input type="number" id="w-rounds" min="1" max="120" value="10" required></label>
+        <div class="type-fields hidden" data-for="pyramids">
+          <div class="mode-picker" role="group" aria-label="Pyramid mode">
+            <button type="button" class="mode-opt" data-mode="normal" aria-pressed="true">Normal</button>
+            <button type="button" class="mode-opt" data-mode="hard" aria-pressed="false">Hard</button>
+          </div>
+          <p id="pyramid-mode-hint" class="muted">Rest equals work on every step.</p>
+          <fieldset class="layers">
+            <legend>Layers (work seconds, shortest to peak)</legend>
+            <div id="pyramid-layers"></div>
+            <button type="button" id="pyramid-add" class="secondary">Add layer</button>
+          </fieldset>
+          <label id="pyramid-rest-field" class="hidden">Rest seconds (every step)<input type="number" id="w-pyramid-rest" min="1" max="595" value="10"></label>
+          <p id="w-pyramid-preview" class="muted" aria-live="polite"></p>
+        </div>
+
+        <label data-except="random pyramids">Rounds<input type="number" id="w-rounds" min="1" max="120" value="10" required></label>
         <label data-except="random">Warning lead: <span id="w-lead-out">10</span>s
           <input type="range" id="w-lead" min="3" max="15" value="10">
         </label>

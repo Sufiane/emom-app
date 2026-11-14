@@ -1,7 +1,8 @@
 import { api } from './api.js';
 import { getMixWithMusic, isIos, setMixWithMusic } from './audio-prefs.js';
+import { MAX_WORK_SEC, MIN_LAYERS, MIN_WORK_SEC, stepsOf, validatePyramid } from './pyramids.js';
 import { maxBursts, validateRandomConfig } from './random-hiit.js';
-import { intervalTotalSeconds, workoutTotalSeconds } from './schedule.js';
+import { intervalTotalSeconds, pyramidTotalSeconds, workoutTotalSeconds } from './schedule.js';
 import { WorkoutTimer } from './timer.js';
 
 const byId = (id) => document.getElementById(id);
@@ -31,7 +32,7 @@ function formatClock(totalSeconds) {
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
-const TYPE_LABELS = { emom: 'EMOM', intervals: 'Intervals', random: 'Random HIIT' };
+const TYPE_LABELS = { emom: 'EMOM', intervals: 'Intervals', random: 'Random HIIT', pyramids: 'Pyramids' };
 
 // ---- Auth ----
 
@@ -210,7 +211,12 @@ const ERROR_MESSAGES = {
   config_invalid: 'Enter whole numbers above zero in every field',
   workout_id_invalid: 'Invalid workout',
   workout_not_found: 'Workout not found',
-  email_invalid: 'Enter a valid email address'
+  email_invalid: 'Enter a valid email address',
+  layers_too_few: 'Add at least 3 layers',
+  layers_not_ascending: 'Each layer must be longer than the one before',
+  work_out_of_range: 'Each layer must be between 5 and 600 seconds',
+  rest_out_of_range: 'Rest must be a whole number of seconds, at least 1',
+  lead_too_long: 'Warning lead must be shorter than the shortest work or rest'
 };
 
 function errorMessage(code) {
@@ -220,6 +226,20 @@ function errorMessage(code) {
 function randomErrorMessage(code, config) {
   if (code === 'total_sec_too_short') {
     return `Total too short: need at least ${config.burst_min_sec + 2 * config.min_rest_sec}s`;
+  }
+
+  return errorMessage(code);
+}
+
+function pyramidErrorMessage(code, workout) {
+  if (code === 'rest_too_close_to_work') {
+    const limit = workout.layers[0] - 5;
+
+    if (limit < 1) {
+      return 'Hard mode needs a first layer of at least 6 seconds';
+    }
+
+    return `Rest must be ${limit}s or less (first layer minus 5)`;
   }
 
   return errorMessage(code);
@@ -250,11 +270,18 @@ function setType(type) {
   }
 
   for (const element of document.querySelectorAll('[data-except]')) {
-    setSectionActive(element, element.dataset.except !== type);
+    setSectionActive(element, !element.dataset.except.split(' ').includes(type));
   }
 
-  byId('form-submit').textContent = loggedIn ? 'Save' : 'Start';
-  byId('w-name').required = loggedIn;
+  const runOnly = !loggedIn || type === 'pyramids';
+
+  byId('form-submit').textContent = runOnly ? 'Start' : 'Save';
+  byId('w-name').required = !runOnly;
+
+  if (type === 'pyramids') {
+    syncLayerRows();
+    syncPyramidMode();
+  }
 
   updateFormDerived();
 }
@@ -279,6 +306,121 @@ for (const presetBtn of document.querySelectorAll('[data-preset]')) {
   });
 }
 
+const DEFAULT_PYRAMID_LAYERS = [20, 30, 40];
+const DEFAULT_PYRAMID_REST_SEC = 15;
+const PYRAMID_LAYER_STEP_SEC = 10;
+const layerList = byId('pyramid-layers');
+const pyramidRestInput = byId('w-pyramid-rest');
+let pyramidMode = 'normal';
+
+function layerInputs() {
+  return [...layerList.querySelectorAll('input')];
+}
+
+function pyramidLayers() {
+  return layerInputs().map((input) => Number(input.value));
+}
+
+function pyramidWorkout() {
+  return {
+    type: 'pyramids',
+    name: byId('w-name').value.trim() || 'Workout',
+    mode: pyramidMode,
+    layers: pyramidLayers(),
+    rest_sec: pyramidMode === 'hard' ? Number(pyramidRestInput.value) : 0,
+    warning_lead_sec: Number(leadInput.value)
+  };
+}
+
+function syncLayerRows() {
+  const rows = [...layerList.children];
+
+  rows.forEach((row, index) => {
+    const number = index + 1;
+
+    row.querySelector('input').setAttribute('aria-label', `Layer ${number} work seconds`);
+
+    const remove = row.querySelector('button');
+
+    remove.setAttribute('aria-label', `Remove layer ${number}`);
+    remove.disabled = rows.length <= MIN_LAYERS;
+  });
+}
+
+function addLayerRow(value) {
+  const row = document.createElement('div');
+  const input = document.createElement('input');
+  const remove = button('Remove', () => {
+    row.remove();
+    syncLayerRows();
+    updateFormDerived();
+  }, 'secondary');
+
+  row.className = 'layer-row';
+  input.type = 'number';
+  input.inputMode = 'numeric';
+  input.min = String(MIN_WORK_SEC);
+  input.max = String(MAX_WORK_SEC);
+  input.value = String(value);
+  input.addEventListener('input', updateFormDerived);
+  row.append(input, remove);
+  layerList.appendChild(row);
+  syncLayerRows();
+}
+
+function resetPyramidRows(layers) {
+  layerList.innerHTML = '';
+
+  for (const layer of layers) {
+    addLayerRow(layer);
+  }
+}
+
+function syncPyramidMode() {
+  const hard = pyramidMode === 'hard';
+
+  for (const modeBtn of document.querySelectorAll('.mode-opt')) {
+    modeBtn.setAttribute('aria-pressed', String(modeBtn.dataset.mode === pyramidMode));
+  }
+
+  setSectionActive(byId('pyramid-rest-field'), hard);
+  byId('pyramid-mode-hint').textContent = hard
+    ? 'One shared rest after every step, at least 5s shorter than the first layer.'
+    : 'Rest equals work on every step.';
+}
+
+function setPyramidMode(mode) {
+  pyramidMode = mode;
+  syncPyramidMode();
+  updateFormDerived();
+}
+
+for (const modeBtn of document.querySelectorAll('.mode-opt')) {
+  modeBtn.addEventListener('click', () => setPyramidMode(modeBtn.dataset.mode));
+}
+
+byId('pyramid-add').addEventListener('click', () => {
+  const last = pyramidLayers().at(-1) || 0;
+
+  addLayerRow(Math.min(MAX_WORK_SEC, last + PYRAMID_LAYER_STEP_SEC));
+  updateFormDerived();
+});
+
+function pyramidPreview(workout) {
+  const steps = stepsOf(workout);
+  const sequence = steps.map((step) => step.work_sec).join(' → ');
+  const rest = workout.mode === 'hard' ? ` · ${workout.rest_sec}s rest` : '';
+
+  return `${sequence} · ${steps.length} steps${rest}`;
+}
+
+function updatePyramidDerived() {
+  const workout = pyramidWorkout();
+
+  byId('w-pyramid-preview').textContent = pyramidPreview(workout);
+  byId('w-total').textContent = formatClock(pyramidTotalSeconds(workout));
+}
+
 function updateFormDerived() {
   const config = randomEngineConfig(randomConfig());
 
@@ -286,6 +428,12 @@ function updateFormDerived() {
 
   byId('w-lead-out').textContent = leadInput.value;
   leadInput.setAttribute('aria-valuetext', `${leadInput.value} seconds`);
+
+  if (currentType === 'pyramids') {
+    updatePyramidDerived();
+
+    return;
+  }
 
   const rounds = Number(roundsInput.value) || 0;
   const total = currentType === 'intervals'
@@ -299,7 +447,7 @@ function updateFormDerived() {
   byId('w-total').textContent = formatClock(total);
 }
 
-for (const input of [intervalInput, roundsInput, leadInput, workInput, restInput, totalMinInput, minRestInput, burstMinInput, burstMaxInput]) {
+for (const input of [intervalInput, roundsInput, leadInput, workInput, restInput, totalMinInput, minRestInput, burstMinInput, burstMaxInput, pyramidRestInput]) {
   input.addEventListener('input', updateFormDerived);
 }
 
@@ -314,6 +462,10 @@ function openForm(workout) {
   nameInput.value = workout ? workout.name : '';
 
   const type = workout ? workout.type : 'emom';
+
+  pyramidMode = 'normal';
+  pyramidRestInput.value = String(DEFAULT_PYRAMID_REST_SEC);
+  resetPyramidRows(DEFAULT_PYRAMID_LAYERS);
 
   const timed = workout != null && type !== 'random';
 
@@ -361,6 +513,21 @@ workoutForm.addEventListener('submit', async (event) => {
     }
 
     await saveWorkout({ name: randomName, type: 'random', ...config });
+
+    return;
+  }
+
+  if (currentType === 'pyramids') {
+    const pyramid = pyramidWorkout();
+    const code = validatePyramid(pyramid);
+
+    if (code != null) {
+      formError.textContent = pyramidErrorMessage(code, pyramid);
+
+      return;
+    }
+
+    openRunner(pyramid);
 
     return;
   }
@@ -488,6 +655,12 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function phaseLabel(workout, phase, round) {
+  if (workout.type === 'pyramids') {
+    const tag = phase === 'rest' ? 'REST' : 'WORK';
+
+    return `${tag} · Step ${round} / ${stepsOf(workout).length}`;
+  }
+
   if (workout.type === 'intervals') {
     const tag = phase === 'rest' ? 'REST' : 'WORK';
 
@@ -497,10 +670,32 @@ function phaseLabel(workout, phase, round) {
   return `Round ${round} / ${workout.rounds}`;
 }
 
+function runnerSummary(workout) {
+  if (workout.type === 'random') {
+    return `Random HIIT · ${formatClock(workout.total_sec)} · bursts ${workout.burst_min_sec}-${workout.burst_max_sec}s`;
+  }
+
+  if (workout.type === 'pyramids') {
+    return `Pyramids · ${workout.layers.length} layers · ${formatClock(pyramidTotalSeconds(workout))}`;
+  }
+
+  return `${TYPE_LABELS[workout.type] ?? 'EMOM'} · ${workout.rounds} rounds`;
+}
+
+function initialClockSeconds(workout) {
+  if (workout.type === 'random') {
+    return workout.total_sec;
+  }
+
+  if (workout.type === 'pyramids') {
+    return workout.layers[0];
+  }
+
+  return workout.work_sec;
+}
+
 function runnerHeading(workout) {
-  const summary = workout.type === 'random'
-    ? `Random HIIT · ${formatClock(workout.total_sec)} · bursts ${workout.burst_min_sec}-${workout.burst_max_sec}s`
-    : `${TYPE_LABELS[workout.type] ?? 'EMOM'} · ${workout.rounds} rounds`;
+  const summary = runnerSummary(workout);
 
   if (!loggedIn && workout.name === 'Workout') {
     return summary;
@@ -512,7 +707,7 @@ function runnerHeading(workout) {
 async function openRunner(workout) {
   stopTimer();
   byId('run-name').textContent = runnerHeading(workout);
-  byId('run-time').textContent = formatClock(workout.type === 'random' ? workout.total_sec : workout.work_sec);
+  byId('run-time').textContent = formatClock(initialClockSeconds(workout));
   byId('run-rounds').textContent = workout.type === 'random' ? 'Ready' : phaseLabel(workout, 'work', 1);
   byId('run-total').textContent = `Total ${formatClock(workoutTotalSeconds(workout))}`;
   runnerSection.dataset.phase = 'work';

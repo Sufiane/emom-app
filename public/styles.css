@@ -239,8 +239,9 @@ li button {
 
 .type-opt {
   flex: 1;
+  min-width: 0;
   min-height: var(--control-h);
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 0.4rem;
   background: transparent;
   color: var(--muted);
   border: none;
@@ -255,6 +256,59 @@ li button {
 .type-opt[aria-selected="true"] {
   background: var(--accent);
   color: var(--accent-ink);
+}
+
+.mode-picker {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.mode-opt {
+  flex: 1;
+  background: transparent;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+.mode-opt[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.layers {
+  margin: 0 0 1rem;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.layers legend {
+  padding: 0;
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.layer-row input {
+  flex: 1;
+  min-height: var(--control-h);
+  margin-top: 0;
+}
+
+.layer-row button {
+  min-width: var(--control-h);
+  padding: 0.5rem 0.75rem;
 }
 
 .presets {
@@ -731,6 +785,7 @@ body[data-view="runner"].landscape-rotate .run-mix-hint {
 
 button:focus-visible,
 .link-btn:focus-visible,
-.type-opt:focus-visible {
+.type-opt:focus-visible,
+.mode-opt:focus-visible {
   outline-offset: 2px;
 }
