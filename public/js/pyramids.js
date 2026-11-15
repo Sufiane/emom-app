@@ -1,7 +1,6 @@
 export const MIN_LAYERS = 3;
 export const MIN_WORK_SEC = 5;
 export const MAX_WORK_SEC = 600;
-const HARD_REST_GAP_SEC = 5;
 
 export function stepsOf({ mode, layers, rest_sec }) {
   const descent = layers.slice(0, -1).reverse();
@@ -25,7 +24,7 @@ function validateHardRest(workout) {
     return 'rest_out_of_range';
   }
 
-  if (workout.rest_sec > workout.layers[0] - HARD_REST_GAP_SEC) {
+  if (workout.rest_sec > workout.layers[0]) {
     return 'rest_too_close_to_work';
   }
 

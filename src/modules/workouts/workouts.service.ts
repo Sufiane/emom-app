@@ -246,7 +246,6 @@ function validateIntervals(name: WorkoutName, input: IntervalsInput): IntervalsC
 }
 
 const MIN_LAYERS = 3;
-const HARD_REST_GAP_SEC = 5;
 
 function validatePyramids(name: WorkoutName, input: PyramidsInput): PyramidsClean {
   const mode = makePyramidMode(input.mode);
@@ -310,8 +309,8 @@ function resolvePyramidRest(mode: PyramidMode, layers: LayerSec[], value: unknow
 
   const restSec = makePyramidRestSec(value);
 
-  if (restSec > layers[0] - HARD_REST_GAP_SEC) {
-    console.warn(`rest_sec ${restSec} exceeds first layer ${layers[0]} minus ${HARD_REST_GAP_SEC}`);
+  if (restSec > layers[0]) {
+    console.warn(`rest_sec ${restSec} exceeds first layer ${layers[0]}`);
 
     throw badRequest('rest_too_close_to_work');
   }

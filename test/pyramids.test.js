@@ -90,16 +90,16 @@ describe('validatePyramid', () => {
   });
 
   describe('when the mode is hard', () => {
-    describe('and rest is exactly the first layer minus 5', () => {
+    describe('and rest equals the first layer', () => {
       it('returns null', () => {
-        assert.equal(validatePyramid(pyramid({ mode: 'hard', layers: [20, 30, 40], rest_sec: 15 })), null);
+        assert.equal(validatePyramid(pyramid({ mode: 'hard', layers: [10, 30, 40], rest_sec: 10 })), null);
       });
     });
 
-    describe('and rest is the first layer minus 4', () => {
+    describe('and rest is one above the first layer', () => {
       it('returns rest_too_close_to_work', () => {
         assert.equal(
-          validatePyramid(pyramid({ mode: 'hard', layers: [20, 30, 40], rest_sec: 16 })),
+          validatePyramid(pyramid({ mode: 'hard', layers: [20, 30, 40], rest_sec: 21 })),
           'rest_too_close_to_work'
         );
       });

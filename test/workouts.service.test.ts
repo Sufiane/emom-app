@@ -269,8 +269,7 @@ describe('WorkoutsService', () => {
       ['rest is missing', { rest_sec: undefined }, 'rest_out_of_range'],
       ['rest is zero', { rest_sec: 0 }, 'rest_out_of_range'],
       ['rest is not an integer', { rest_sec: 7.5 }, 'rest_out_of_range'],
-      ['rest is one above first layer minus 5', { rest_sec: 16 }, 'rest_too_close_to_work'],
-      ['first layer is 5 seconds', { layers: [5, 20, 30], rest_sec: 1 }, 'rest_too_close_to_work'],
+      ['rest is one above first layer', { rest_sec: 21 }, 'rest_too_close_to_work'],
       ['lead equals the shared rest', { rest_sec: 5, warning_lead_sec: 5 }, 'lead_too_long']
     ];
 
@@ -297,11 +296,16 @@ describe('WorkoutsService', () => {
       });
     });
 
-    describe('when hard rest equals first layer minus 5', () => {
+    describe('when hard rest equals the first layer', () => {
       it('accepts it', async () => {
-        const row = await service.create(USER, { ...HARD_PYRAMID, rest_sec: 15, warning_lead_sec: 14 } as WorkoutInput);
+        const row = await service.create(USER, {
+          ...HARD_PYRAMID,
+          layers: [10, 40, 60],
+          rest_sec: 10,
+          warning_lead_sec: 3
+        } as WorkoutInput);
 
-        assert.equal(row.rest_sec, 15);
+        assert.equal(row.rest_sec, 10);
       });
     });
 

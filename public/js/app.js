@@ -215,7 +215,7 @@ const ERROR_MESSAGES = {
   lead_too_long: 'Warning lead must be shorter than the shortest work or rest',
   mode_invalid: 'Choose Normal or Hard mode',
   layers_invalid: 'Add your layers',
-  rest_too_close_to_work: 'Rest must be at least 5 seconds shorter than the first layer'
+  rest_too_close_to_work: 'Rest cannot be longer than the first layer'
 };
 
 function errorMessage(code) {
@@ -232,13 +232,7 @@ function randomErrorMessage(code, config) {
 
 function pyramidErrorMessage(code, workout) {
   if (code === 'rest_too_close_to_work') {
-    const limit = workout.layers[0] - 5;
-
-    if (limit < 1) {
-      return 'Hard mode needs a first layer of at least 6 seconds';
-    }
-
-    return `Rest must be ${limit}s or less (first layer minus 5)`;
+    return `Rest must be ${workout.layers[0]}s or less (no longer than the first layer)`;
   }
 
   return errorMessage(code);
@@ -384,7 +378,7 @@ function syncPyramidMode() {
 
   setSectionActive(byId('pyramid-rest-field'), hard);
   byId('pyramid-mode-hint').textContent = hard
-    ? 'One shared rest after every step, at least 5s shorter than the first layer.'
+    ? 'One shared rest after every step, no longer than the first layer.'
     : 'Rest equals work on every step.';
 }
 
